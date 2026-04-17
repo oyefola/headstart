@@ -1,0 +1,16 @@
+{
+    "name": "headstart-local",
+    "version": "3.0.0",
+    "description": "Local development and testing environment for Headstart",
+    "main": "controllers.js",
+    "scripts": {
+        "test": "jest",
+        "test:coverage": "jest --coverage --runInBand",
+        "test:watch": "jest --watch",
+        "push": "clasp push"
+    },
+    "devDependencies": {
+        "@types/google-apps-script": "^1.0.83",
+        "jest": "^29.7.0"
+    }
+}

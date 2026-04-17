@@ -1,0 +1,9 @@
+*.test.js
+__tests__/*
+tests/
+node_modules/*
+jest.config.js
+__tests__/appSettings.test.js
+__tests__/calendarApiWrapper.test.js
+__tests__/jest.setup.js
+__tests__/eventContextFactory.test.js
