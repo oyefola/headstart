@@ -56,7 +56,20 @@ describe("ShadowDescriptionBuilder", () => {
     expect(formatted).toContain("10:00");
   });
 
-  test("build() includes the explanatory text, start time, conference details, and notes", () => {
+  test("_toPlainText() strips markup and preserves readable line breaks", () => {
+    const builder = new ShadowDescriptionBuilder();
+
+    const plainText = builder._toPlainText(
+      "Video: <a href='https://meet.google.com/example'>https://meet.google.com/example</a><br><br><div>Phone: +44 20 1111 2222</div>"
+    );
+
+    expect(plainText).toContain("Video: https://meet.google.com/example");
+    expect(plainText).toContain("Phone: +44 20 1111 2222");
+    expect(plainText).not.toContain("<a");
+    expect(plainText).not.toContain("<div");
+  });
+
+  test("build() includes the explanatory text, start time, plain-text conference details, and notes", () => {
     const builder = new ShadowDescriptionBuilder();
 
     const description = builder.build(
@@ -70,5 +83,8 @@ describe("ShadowDescriptionBuilder", () => {
     expect(description).toContain("Original Start Time");
     expect(description).toContain("Conferencing Details");
     expect(description).toContain("Original Event Notes");
+    expect(description).toContain("Video: https://meet.google.com/example");
+    expect(description).not.toContain("<a");
+    expect(description).not.toContain("<br>");
   });
 });

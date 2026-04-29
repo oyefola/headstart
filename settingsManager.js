@@ -11,6 +11,7 @@ class AppSettings {
     return { 
       bufferOnline: raw['BUFFER_ONLINE'] || "true",
       onlineBuffer: raw['ONLINE_BUFFER'] || "15",
+      bufferReminderMinutes: raw['BUFFER_REMINDER_MINUTES'] !== undefined ? raw['BUFFER_REMINDER_MINUTES'] : "0",
       homeAddress: raw['HOME_ADDRESS'] || "", 
       extraBuffer: raw['EXTRA_BUFFER'] || "0",
       uniName: raw['UNI_NAME'] || "",
@@ -23,10 +24,15 @@ class AppSettings {
 
   save(formInput) {
     const onlineBufferInput = (formInput.setting_online_buffer || "").trim();
+    const reminderInput = (formInput.setting_buffer_reminder_minutes || "").trim();
+    const parsedReminderMinutes = reminderInput === "" ? "" : String(
+      Math.min(40320, Math.max(0, parseInt(reminderInput, 10) || 0))
+    );
     
     this.props.setProperties({
       'BUFFER_ONLINE': formInput.setting_buffer_online || "false",
       'ONLINE_BUFFER': onlineBufferInput || "15",
+      'BUFFER_REMINDER_MINUTES': parsedReminderMinutes,
       'HOME_ADDRESS': formInput.setting_home || "",
       'EXTRA_BUFFER': formInput.setting_extra || "0",
       'UNI_NAME': formInput.setting_uni_name || "",

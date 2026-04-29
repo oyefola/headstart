@@ -39,24 +39,47 @@ class ShadowDescriptionBuilder {
     return weekday + ", " + datePart + " at " + timePart;
   }
 
+  _toPlainText(value) {
+    if (!value) return "";
+
+    return String(value)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<li>/gi, "- ")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<\/div>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#39;/gi, "'")
+      .replace(/&quot;/gi, "\"")
+      .replace(/\r\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   build(meetingLink, originalDescription, conferenceDetailsHtml, originalStartTime) {
     const formattedOriginalStart = this._formatOriginalStart(originalStartTime);
-    let description = "<b>Headstart Buffered Event</b><br>" +
-      "--------------------------------<br>" +
+    const plainConferenceDetails = this._toPlainText(conferenceDetailsHtml);
+    const plainOriginalDescription = this._toPlainText(originalDescription);
+    let description = "Headstart Buffered Event\n" +
+      "------------------------\n" +
       "This event was created by Headstart to protect the time before your linked event.";
 
     if (formattedOriginalStart) {
-      description += "<br><br><b>Original Start Time:</b> " + formattedOriginalStart;
+      description += "\n\nOriginal Start Time: " + formattedOriginalStart;
     }
 
-    if (conferenceDetailsHtml) {
-      description += "<br><br><b>Conferencing Details:</b><br>" + conferenceDetailsHtml;
+    if (plainConferenceDetails) {
+      description += "\n\nConferencing Details:\n" + plainConferenceDetails;
     } else if (meetingLink) {
-      description += "<br><br>🎥 <b>Meeting Link:</b> <a href='" + meetingLink + "'>" + meetingLink + "</a>";
+      description += "\n\nMeeting Link: " + meetingLink;
     }
 
-    if (originalDescription && originalDescription.trim()) {
-      description += "<br><br><b>Original Event Notes:</b><br>" + originalDescription;
+    if (plainOriginalDescription) {
+      description += "\n\nOriginal Event Notes:\n" + plainOriginalDescription;
     }
 
     return description;

@@ -53,8 +53,6 @@ The local suite lives in [__tests__](/Users/folademiladeoyeleke/headstart-local/
 
 ## Requirements Traceability
 
-These requirements are taken from Chapter 3 of `dissertation_draft.tex`.
-
 | Requirement | Meaning | Main implementation | Main tests |
 | --- | --- | --- | --- |
 | FR1.1 | Dynamic offset calculation | [bufferDecisionService.js](/Users/folademiladeoyeleke/headstart-local/bufferDecisionService.js), [transitMath.js](/Users/folademiladeoyeleke/headstart-local/transitMath.js) | [bufferDecisionService.test.js](/Users/folademiladeoyeleke/headstart-local/__tests__/bufferDecisionService.test.js) |

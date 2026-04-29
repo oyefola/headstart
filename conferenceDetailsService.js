@@ -1,5 +1,4 @@
 class ConferenceDetailsService {
-  /* istanbul ignore next */
   getForEvent(calendarId, event, lookupHints) {
     const lookupRequest = this._buildLookupRequest(event, lookupHints);
     const fallbackDetails = this._buildFallbackConferenceDetails(lookupRequest);
@@ -33,7 +32,6 @@ class ConferenceDetailsService {
     return finalDetails;
   }
 
-  /* istanbul ignore next */
   findAdvancedEvent(calendarId, lookup) {
     if (typeof Calendar === "undefined" || !Calendar.Events || !calendarId) return null;
 
@@ -73,7 +71,6 @@ class ConferenceDetailsService {
     return !!(details && (details.meetingLink || details.detailsHtml || details.hasNativeConferenceData));
   }
 
-  /* istanbul ignore next */
   _buildFallbackConferenceDetails(lookup) {
     const request = lookup || {};
     const conferenceData = request.conferenceData || null;
@@ -103,7 +100,6 @@ class ConferenceDetailsService {
     return details;
   }
 
-  /* istanbul ignore next */
   _buildLookupRequest(event, lookupHints) {
     const hints = lookupHints || {};
 
@@ -226,13 +222,11 @@ class ConferenceDetailsService {
     return null;
   }
 
-  /* istanbul ignore next */
   _readEventDateMs(eventDate) {
     const parsed = this._normalizeTime(eventDate);
     return parsed ? parsed.getTime() : null;
   }
 
-  /* istanbul ignore next */
   _extractConferenceDetails(eventData) {
     const entryPoints = eventData.conferenceData && eventData.conferenceData.entryPoints
       ? eventData.conferenceData.entryPoints
@@ -297,7 +291,6 @@ class ConferenceDetailsService {
     return String(hash);
   }
 
-  /* istanbul ignore next */
   _findPreferredVideoEntry(entryPoints) {
     for (let i = 0; i < entryPoints.length; i++) {
       if (entryPoints[i].entryPointType === "video" && entryPoints[i].uri) {
@@ -316,7 +309,6 @@ class ConferenceDetailsService {
     return "";
   }
 
-  /* istanbul ignore next */
   _formatEntryPoint(entryPoint) {
     if (!entryPoint) return "";
 
@@ -347,7 +339,6 @@ class ConferenceDetailsService {
   }
 }
 
-/* istanbul ignore next */
 if (typeof module !== "undefined") {
   module.exports = { ConferenceDetailsService };
 }

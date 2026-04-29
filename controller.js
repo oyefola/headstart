@@ -232,7 +232,6 @@ function handleCreateBuffer(e) {
 
   const manualPhysicalLocation = readFormInputValue(e.formInput, "manualPhysicalLocation");
   const manualMeetingLink = readFormInputValue(e.formInput, "manualMeetingLink");
-  /* istanbul ignore next */
   const resolvedManualLocation = e.parameters.resolvedLocation ||
     (e.parameters.attendanceMode === "online" ? manualMeetingLink : manualPhysicalLocation) ||
     "";
@@ -315,7 +314,6 @@ function onContinueBufferSetup(e) {
     resolvedLocation: manualMeetingLink || manualPhysicalLocation
   });
 
-  /* istanbul ignore next */
   return handleCreateBuffer({
     parameters: nextParameters,
     formInput: e.formInput || {},
@@ -417,7 +415,6 @@ function handleSaveSettings(e) {
     .build();
 }
 
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = {
     normalizeEventTime,

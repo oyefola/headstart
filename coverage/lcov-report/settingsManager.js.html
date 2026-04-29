@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>21/21</span>
+                <span class='fraction'>23/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">96.29% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>46/46</span>
+                <span class='fraction'>52/54</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>18/18</span>
+                <span class='fraction'>20/20</span>
             </div>
         
             
@@ -142,33 +142,45 @@
 <a name='L77'></a><a href='#L77'>77</a>
 <a name='L78'></a><a href='#L78'>78</a>
 <a name='L79'></a><a href='#L79'>79</a>
-<a name='L80'></a><a href='#L80'>80</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">14x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -234,6 +246,7 @@ class AppSettings {
     return { 
       bufferOnline: raw['BUFFER_ONLINE'] || "true",
       onlineBuffer: raw['ONLINE_BUFFER'] || "15",
+      bufferReminderMinutes: raw['BUFFER_REMINDER_MINUTES'] !== undefined ? <span class="branch-0 cbranch-no" title="branch not covered" >raw['BUFFER_REMINDER_MINUTES'] </span>: "0",
       homeAddress: raw['HOME_ADDRESS'] || "", 
       extraBuffer: raw['EXTRA_BUFFER'] || "0",
       uniName: raw['UNI_NAME'] || "",
@@ -246,10 +259,15 @@ class AppSettings {
 &nbsp;
   save(formInput) {
     const onlineBufferInput = (formInput.setting_online_buffer || "").trim();
+    const reminderInput = (formInput.setting_buffer_reminder_minutes || "").trim();
+    const parsedReminderMinutes = reminderInput === "" ? "" : String(
+      Math.min(40320, Math.max(0, parseInt(reminderInput, 10) || <span class="branch-1 cbranch-no" title="branch not covered" >0)</span>)
+    );
     
     this.props.setProperties({
       'BUFFER_ONLINE': formInput.setting_buffer_online || "false",
       'ONLINE_BUFFER': onlineBufferInput || "15",
+      'BUFFER_REMINDER_MINUTES': parsedReminderMinutes,
       'HOME_ADDRESS': formInput.setting_home || "",
       'EXTRA_BUFFER': formInput.setting_extra || "0",
       'UNI_NAME': formInput.setting_uni_name || "",
@@ -307,7 +325,7 @@ if (typeof module !== 'undefined') {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-17T17:52:00.641Z
+                at 2026-04-29T15:33:09.916Z
             </div>
         <script src="prettify.js"></script>
         <script>

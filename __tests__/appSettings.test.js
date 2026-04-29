@@ -29,6 +29,7 @@ describe("AppSettings Class", () => {
         const settings = settingsManager.get();
 
         expect(settings.onlineBuffer).toBe("15");
+        expect(settings.bufferReminderMinutes).toBe("0");
         expect(settings.homeAddress).toBe("");
         expect(settings.walkLimit).toBe("2.0");
         expect(settings.calColor).toBe(global.CalendarApp.Color.ORANGE);
@@ -68,6 +69,39 @@ describe("AppSettings Class", () => {
 
         const savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
         expect(savedData["ONLINE_BUFFER"]).toBe("15");
+    });
+
+    test("save() should sanitize buffered reminder minutes and allow blank values", () => {
+        settingsManager.save({
+            setting_buffer_reminder_minutes: " 5 "
+        });
+
+        let savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
+        expect(savedData["BUFFER_REMINDER_MINUTES"]).toBe("5");
+
+        jest.clearAllMocks();
+        settingsManager.save({
+            setting_buffer_reminder_minutes: "   "
+        });
+
+        savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
+        expect(savedData["BUFFER_REMINDER_MINUTES"]).toBe("");
+
+        jest.clearAllMocks();
+        settingsManager.save({
+            setting_buffer_reminder_minutes: "999999"
+        });
+
+        savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
+        expect(savedData["BUFFER_REMINDER_MINUTES"]).toBe("40320");
+
+        jest.clearAllMocks();
+        settingsManager.save({
+            setting_buffer_reminder_minutes: "-12"
+        });
+
+        savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
+        expect(savedData["BUFFER_REMINDER_MINUTES"]).toBe("0");
     });
 
     test("setTutorialComplete() should persist the onboarding flag", () => {

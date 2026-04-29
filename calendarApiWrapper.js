@@ -57,7 +57,6 @@ class CalendarManager {
     this.bufferDecisionService = services.bufferDecisionService || createBufferDecisionService(settings, travelEngine);
   }
 
-  /* istanbul ignore next */
   getUniversalEventId(event) {
     if (!event) return "UNKNOWN";
     const title = event.getTitle() || "Untitled";
@@ -66,7 +65,6 @@ class CalendarManager {
     return Utilities.base64Encode(rawString);
   }
 
-  /* istanbul ignore next */
   _normalizeTimeHint(value) {
     if (!value) return null;
     if (value instanceof Date) return value;
@@ -80,7 +78,6 @@ class CalendarManager {
     return null;
   }
 
-  /* istanbul ignore next */
   _decodeSerializedJson(value) {
     if (!value) return null;
     if (typeof value === "object") return value;
@@ -118,7 +115,6 @@ class CalendarManager {
       event.getEndTime().getTime() === eventHints.endTime.getTime();
   }
 
-  /* istanbul ignore next */
   _findEventByWindow(calendar, eventId, eventHints, paddingMs) {
     if (!calendar || !eventHints.startTime || !eventHints.endTime) return null;
 
@@ -139,7 +135,6 @@ class CalendarManager {
     return null;
   }
 
-  /* istanbul ignore next */
   _findBuiltInEventFromAdvancedEvent(calendar, advancedEvent) {
     if (!calendar || !advancedEvent) return null;
 
@@ -177,7 +172,6 @@ class CalendarManager {
     return null;
   }
 
-  /* istanbul ignore next */
   _resolveEventFromAdvancedLookup(calendarId, eventId, eventHints) {
     if (!this.conferenceDetailsService) return null;
 
@@ -194,7 +188,6 @@ class CalendarManager {
     return this._findBuiltInEventFromAdvancedEvent(calendar, advancedEvent);
   }
 
-  /* istanbul ignore next */
   getEventRobust(calendarId, eventId, eventHints) {
     const calendar = CalendarApp.getCalendarById(calendarId);
     if (!calendar) return null;
@@ -242,7 +235,6 @@ class CalendarManager {
     return null;
   }
 
-  /* istanbul ignore next */
   getOrCreateHeadstartCalendar() {
     const calendars = CalendarApp.getAllCalendars();
     for (let i = 0; i < calendars.length; i++) { 
@@ -269,7 +261,6 @@ class CalendarManager {
     } catch (err) {}
   }
 
-  /* istanbul ignore next */
   _cloneConferenceData(conferenceData) {
     return conferenceData ? JSON.parse(JSON.stringify(conferenceData)) : null;
   }
@@ -294,7 +285,66 @@ class CalendarManager {
     return null;
   }
 
-  /* istanbul ignore next */
+  _getShadowReminderMinutes() {
+    const rawValue = this.settings && this.settings.bufferReminderMinutes;
+    if (rawValue === undefined || rawValue === null) return 0;
+
+    const normalized = String(rawValue).trim();
+    if (normalized === "") return null;
+
+    return Math.min(40320, Math.max(0, parseInt(normalized, 10) || 0));
+  }
+
+  _applyShadowReminderPolicy(targetCalendarId, shadowEvent) {
+    if (!shadowEvent) return;
+
+    const reminderMinutes = this._getShadowReminderMinutes();
+    try {
+      shadowEvent.removeAllReminders();
+    } catch (err) {
+      console.log("Shadow reminder clear failed: " + err);
+    }
+
+    const overrides = reminderMinutes === null ? [] : [{
+      method: "popup",
+      minutes: reminderMinutes
+    }];
+    const shadowResource = targetCalendarId ? this._findShadowEventResource(targetCalendarId, shadowEvent) : null;
+
+    if (shadowResource && shadowResource.id && typeof Calendar !== "undefined" && Calendar.Events && Calendar.Events.patch) {
+      try {
+        Calendar.Events.patch({
+          reminders: {
+            useDefault: false,
+            overrides: overrides
+          }
+        }, targetCalendarId, shadowResource.id, {
+          sendUpdates: "none"
+        });
+        return;
+      } catch (err) {
+        console.log("Shadow reminder patch failed: " + err);
+      }
+    }
+
+    if (reminderMinutes === null) {
+      return;
+    }
+
+    if (reminderMinutes >= 5 && shadowEvent.addPopupReminder) {
+      try {
+        shadowEvent.addPopupReminder(reminderMinutes);
+      } catch (err) {
+        console.log("Shadow reminder fallback failed: " + err);
+      }
+      return;
+    }
+
+    if (reminderMinutes === 0) {
+      console.log("Shadow reminder fallback skipped: 0-minute popup reminders require Advanced Calendar reminder patching.");
+    }
+  }
+
   _synchronizeShadowConferenceData(targetCalendarId, shadowEvent, eventContext) {
     const defaultFingerprint = eventContext.conferenceFingerprint || "";
     if (!shadowEvent || !targetCalendarId || !this.conferenceDetailsService) {
@@ -374,7 +424,6 @@ class CalendarManager {
     }
   }
 
-  /* istanbul ignore next */
   linkShadowEvent(originalEvent, shadowEvent, originalCalId, metadata) {
     const details = metadata || {};
     try { 
@@ -398,7 +447,6 @@ class CalendarManager {
     try { return event.getTag(CONFIG.TAG_PARENT_ID); } catch(e) { return null; }
   }
 
-  /* istanbul ignore next */
   findLinkedShadowEvent(originalEvent) {
     if (!originalEvent) return null;
     const targetCal = this.getOrCreateHeadstartCalendar();
@@ -421,7 +469,6 @@ class CalendarManager {
     return null;
   }
 
-  /* istanbul ignore next */
   _extractLookupHints(formInput) {
     const rawInput = formInput || {};
     return {
@@ -434,7 +481,6 @@ class CalendarManager {
     };
   }
 
-  /* istanbul ignore next */
   createEventContext(originalEvent, originalCalId, formInput) {
     return this.eventContextFactory.createFromEvent(
       originalEvent,
@@ -444,7 +490,6 @@ class CalendarManager {
     );
   }
 
-  /* istanbul ignore next */
   buildShadowDescription(meetingLink, originalDescription, conferenceDetailsHtml, originalStartTime) {
     return this.shadowDescriptionBuilder.build(
       meetingLink,
@@ -454,7 +499,6 @@ class CalendarManager {
     );
   }
 
-  /* istanbul ignore next */
   processEventBuffer(originalEvent, originMode, originalCalId, formInput) {
     const eventContext = this.createEventContext(originalEvent, originalCalId, formInput);
     const decision = this.bufferDecisionService.decide(
@@ -516,6 +560,7 @@ class CalendarManager {
       persistedShadow,
       eventContext
     );
+    this._applyShadowReminderPolicy(targetCalendar.getId(), persistedShadow);
 
     this.linkShadowEvent(originalEvent, finalShadowEvent, originalCalId, {
       minutes: bufferMinutes,
@@ -533,7 +578,6 @@ class CalendarManager {
 }
 
 // Support local Jest testing
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = { CalendarManager };
 }

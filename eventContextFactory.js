@@ -40,7 +40,6 @@ class EventContextFactory {
     const normalizedLocation = rawLocation.toLowerCase();
     const locationIsMeetingLink = this.isMeetingLink(rawLocation);
     const hasPhysicalLocation = !!rawLocation && !locationIsMeetingLink;
-    /* istanbul ignore next */
     const inferredIsOnline = hasPhysicalLocation
       ? false
       : (
