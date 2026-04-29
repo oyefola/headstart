@@ -282,6 +282,35 @@ class CalendarManager {
       }
     }
 
+    if (typeof Calendar !== "undefined" && Calendar.Events && Calendar.Events.list) {
+      try {
+        const response = Calendar.Events.list(targetCalendarId, {
+          singleEvents: true,
+          timeMin: new Date(shadowEvent.getStartTime().getTime() - 60000).toISOString(),
+          timeMax: new Date(shadowEvent.getEndTime().getTime() + 60000).toISOString(),
+          conferenceDataVersion: 1
+        });
+        const items = response && response.items ? response.items : [];
+        const targetTitle = shadowEvent.getTitle ? (shadowEvent.getTitle() || "") : "";
+        const targetStartMs = shadowEvent.getStartTime().getTime();
+        const targetEndMs = shadowEvent.getEndTime().getTime();
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const itemStart = item.start && (item.start.dateTime || item.start.date);
+          const itemEnd = item.end && (item.end.dateTime || item.end.date);
+          const itemStartMs = itemStart ? new Date(itemStart).getTime() : null;
+          const itemEndMs = itemEnd ? new Date(itemEnd).getTime() : null;
+
+          if (itemStartMs !== targetStartMs || itemEndMs !== targetEndMs) continue;
+          if (targetTitle && item.summary && item.summary !== targetTitle) continue;
+          if (item.id) return item;
+        }
+      } catch (err) {
+        console.log("Shadow resource list fallback failed: " + err);
+      }
+    }
+
     return null;
   }
 
@@ -305,43 +334,79 @@ class CalendarManager {
       console.log("Shadow reminder clear failed: " + err);
     }
 
-    const overrides = reminderMinutes === null ? [] : [{
-      method: "popup",
-      minutes: reminderMinutes
-    }];
-    const shadowResource = targetCalendarId ? this._findShadowEventResource(targetCalendarId, shadowEvent) : null;
-
-    if (shadowResource && shadowResource.id && typeof Calendar !== "undefined" && Calendar.Events && Calendar.Events.patch) {
-      try {
-        Calendar.Events.patch({
-          reminders: {
-            useDefault: false,
-            overrides: overrides
-          }
-        }, targetCalendarId, shadowResource.id, {
-          sendUpdates: "none"
-        });
-        return;
-      } catch (err) {
-        console.log("Shadow reminder patch failed: " + err);
-      }
-    }
-
     if (reminderMinutes === null) {
+      const clearResource = targetCalendarId ? this._findShadowEventResource(targetCalendarId, shadowEvent) : null;
+      if (clearResource && clearResource.id && typeof Calendar !== "undefined" && Calendar.Events && Calendar.Events.patch) {
+        try {
+          Calendar.Events.patch({
+            reminders: {
+              useDefault: false,
+              overrides: []
+            }
+          }, targetCalendarId, clearResource.id, {
+            sendUpdates: "none"
+          });
+        } catch (err) {
+          console.log("Shadow reminder clear patch failed: " + err);
+        }
+      }
       return;
     }
 
     if (reminderMinutes >= 5 && shadowEvent.addPopupReminder) {
       try {
         shadowEvent.addPopupReminder(reminderMinutes);
+        console.log("Shadow reminder applied natively: minutes=" + reminderMinutes);
+        return;
       } catch (err) {
-        console.log("Shadow reminder fallback failed: " + err);
+        console.log("Shadow reminder native add failed: " + err);
       }
-      return;
+    }
+
+    const shadowResource = targetCalendarId ? this._findShadowEventResource(targetCalendarId, shadowEvent) : null;
+    if (shadowResource && shadowResource.id && typeof Calendar !== "undefined" && Calendar.Events && Calendar.Events.patch) {
+      try {
+        Calendar.Events.patch({
+          reminders: {
+            useDefault: false,
+            overrides: [{
+              method: "popup",
+              minutes: reminderMinutes
+            }]
+          }
+        }, targetCalendarId, shadowResource.id, {
+          sendUpdates: "none"
+        });
+
+        if (Calendar.Events.get) {
+          try {
+            const verifiedEvent = Calendar.Events.get(targetCalendarId, shadowResource.id);
+            const overrides = verifiedEvent && verifiedEvent.reminders && verifiedEvent.reminders.overrides;
+            console.log(
+              "Shadow reminder verification: minutes=" + reminderMinutes +
+              ", overrideCount=" + (overrides ? overrides.length : 0)
+            );
+          } catch (readErr) {
+            console.log("Shadow reminder verification failed: " + readErr);
+          }
+        }
+        return;
+      } catch (err) {
+        console.log("Shadow reminder patch failed: " + err);
+      }
     }
 
     if (reminderMinutes === 0) {
-      console.log("Shadow reminder fallback skipped: 0-minute popup reminders require Advanced Calendar reminder patching.");
+      console.log("Shadow reminder unavailable: 0-minute popup reminders require Advanced Calendar reminder patching and a resolvable shadow resource.");
+      return;
+    }
+
+    if (shadowEvent.addPopupReminder) {
+      try {
+        shadowEvent.addPopupReminder(reminderMinutes);
+      } catch (err) {
+        console.log("Shadow reminder fallback failed: " + err);
+      }
     }
   }
 
@@ -560,12 +625,12 @@ class CalendarManager {
       persistedShadow,
       eventContext
     );
-    this._applyShadowReminderPolicy(targetCalendar.getId(), persistedShadow);
 
     this.linkShadowEvent(originalEvent, finalShadowEvent, originalCalId, {
       minutes: bufferMinutes,
       conferenceFingerprint: appliedConferenceFingerprint
     });
+    this._applyShadowReminderPolicy(targetCalendar.getId(), persistedShadow);
     try { originalEvent.removeAllReminders(); } catch (err) {}
     
     return {

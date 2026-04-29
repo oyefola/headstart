@@ -646,21 +646,8 @@ describe("CalendarManager helper coverage", () => {
 
     expect(manager._getShadowReminderMinutes()).toBe(5);
     manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
-    expect(global.Calendar.Events.patch).toHaveBeenCalledWith(
-      {
-        reminders: {
-          useDefault: false,
-          overrides: [
-            { method: "popup", minutes: 5 }
-          ]
-        }
-      },
-      "calendar-1",
-      "shadow-api-id",
-      expect.objectContaining({
-        sendUpdates: "none"
-      })
-    );
+    expect(shadowEvent.addPopupReminder).toHaveBeenCalledWith(5);
+    expect(global.Calendar.Events.patch).not.toHaveBeenCalled();
 
     jest.clearAllMocks();
     manager.settings.bufferReminderMinutes = "";
@@ -686,26 +673,63 @@ describe("CalendarManager helper coverage", () => {
     expect(shadowEvent.addPopupReminder).toHaveBeenCalledWith(5);
 
     jest.clearAllMocks();
-    global.Calendar.Events.patch.mockImplementationOnce(() => {
-      throw new Error("reminder patch failed");
+    shadowEvent.addPopupReminder.mockImplementationOnce(() => {
+      throw new Error("native popup failed");
     });
     manager._findShadowEventResource = jest.fn(() => ({ id: "shadow-api-id" }));
     manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
     expect(shadowEvent.addPopupReminder).toHaveBeenCalledWith(5);
+    expect(global.Calendar.Events.patch).toHaveBeenCalledWith(
+      {
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "popup", minutes: 5 }
+          ]
+        }
+      },
+      "calendar-1",
+      "shadow-api-id",
+      expect.objectContaining({
+        sendUpdates: "none"
+      })
+    );
 
     jest.clearAllMocks();
+    global.Calendar.Events.patch.mockImplementationOnce(() => {
+      throw new Error("reminder patch failed");
+    });
+    manager._findShadowEventResource = jest.fn(() => null);
     shadowEvent.addPopupReminder.mockImplementationOnce(() => {
       throw new Error("popup failed");
     });
-    manager._findShadowEventResource = jest.fn(() => null);
     manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
     expect(shadowEvent.addPopupReminder).toHaveBeenCalledWith(5);
 
     jest.clearAllMocks();
     manager.settings.bufferReminderMinutes = "0";
-    manager._findShadowEventResource = jest.fn(() => null);
+    manager._findShadowEventResource = jest.fn(() => ({ id: "shadow-api-id" }));
+    global.Calendar.Events.get.mockReturnValueOnce({
+      reminders: {
+        overrides: [{ method: "popup", minutes: 0 }]
+      }
+    });
     manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
-    expect(shadowEvent.addPopupReminder).not.toHaveBeenCalled();
+    expect(global.Calendar.Events.patch).toHaveBeenCalledWith(
+      {
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "popup", minutes: 0 }
+          ]
+        }
+      },
+      "calendar-1",
+      "shadow-api-id",
+      expect.objectContaining({
+        sendUpdates: "none"
+      })
+    );
 
     jest.clearAllMocks();
     manager.settings.bufferReminderMinutes = "";
@@ -715,6 +739,37 @@ describe("CalendarManager helper coverage", () => {
 
     expect(manager._getShadowReminderMinutes.call({ settings: {} })).toBe(0);
     expect(manager._getShadowReminderMinutes.call({ settings: { bufferReminderMinutes: null } })).toBe(0);
+  });
+
+  test("_findShadowEventResource() falls back to an event list lookup when the iCalUID lookup misses", () => {
+    const manager = createManager();
+    manager.conferenceDetailsService.findAdvancedEvent = jest.fn(() => null);
+    global.Calendar.Events.list.mockReturnValueOnce({
+      items: [
+        {
+          id: "shadow-api-id",
+          summary: "Planning",
+          start: { dateTime: "2026-03-18T09:45:00.000Z" },
+          end: { dateTime: "2026-03-18T11:00:00.000Z" }
+        }
+      ]
+    });
+
+    const shadowResource = manager._findShadowEventResource("calendar-1", {
+      getId: jest.fn(() => "shadow-ical@example.com"),
+      getTitle: jest.fn(() => "Planning"),
+      getStartTime: jest.fn(() => new Date("2026-03-18T09:45:00.000Z")),
+      getEndTime: jest.fn(() => new Date("2026-03-18T11:00:00.000Z"))
+    });
+
+    expect(shadowResource).toEqual(expect.objectContaining({ id: "shadow-api-id" }));
+    expect(global.Calendar.Events.list).toHaveBeenCalledWith(
+      "calendar-1",
+      expect.objectContaining({
+        singleEvents: true,
+        conferenceDataVersion: 1
+      })
+    );
   });
 
   test("linkShadowEvent(), getParentIdFromShadow(), and findLinkedShadowEvent() preserve sidecar metadata", () => {

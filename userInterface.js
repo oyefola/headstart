@@ -248,9 +248,11 @@ class UIBuilder {
     bufferSection.addWidget(this._createLabel("Default Online Buffer (Mins)", ""));
     bufferSection.addWidget(CardService.newTextInput().setFieldName("setting_online_buffer").setValue(this.settings.onlineBuffer || "15"));
     bufferSection.addWidget(CardService.newTextParagraph().setText("<i>If 'Apply buffer to online meetings?' is turned on and this field is left blank, Headstart will use a default 15 minute buffer.</i>"));
-    bufferSection.addWidget(this._createLabel("Buffered Event Reminder (Mins Before Buffer Starts)", ""));
-    bufferSection.addWidget(CardService.newTextInput().setFieldName("setting_buffer_reminder_minutes").setValue(this.settings.bufferReminderMinutes !== undefined ? this.settings.bufferReminderMinutes : "0"));
-    bufferSection.addWidget(CardService.newTextParagraph().setText("<i>Use 0 for a reminder at buffer start, 5 for five minutes before, or leave this blank to disable Headstart reminders on the buffered event.</i>"));
+
+    const reminderSection = CardService.newCardSection().setHeader("Buffered Event Reminders").setCollapsible(true).setNumUncollapsibleWidgets(2);
+    reminderSection.addWidget(this._createLabel("Reminder Timing (Mins Before Buffer Starts)", ""));
+    reminderSection.addWidget(CardService.newTextInput().setFieldName("setting_buffer_reminder_minutes").setValue(this.settings.bufferReminderMinutes !== undefined ? this.settings.bufferReminderMinutes : "0"));
+    reminderSection.addWidget(CardService.newTextParagraph().setText("<i>Use 0 for a reminder at buffer start, 5 for five minutes before, or leave this blank to disable Headstart reminders on the buffered event.</i>"));
     
     const locationSection = CardService.newCardSection().setHeader("Location & Transport").setCollapsible(true).setNumUncollapsibleWidgets(4);
     
@@ -301,6 +303,7 @@ class UIBuilder {
     calSection.addWidget(uniCalDropdown);
 
     builder.addSection(bufferSection);
+    builder.addSection(reminderSection);
     builder.addSection(locationSection);
     builder.addSection(calSection);
     builder.setFixedFooter(this._createFixedFooter(
@@ -321,10 +324,10 @@ class UIBuilder {
 
     const guideSection = CardService.newCardSection().setHeader("How it works").setCollapsible(true).setNumUncollapsibleWidgets(2);
     
-    guideSection.addWidget(CardService.newTextParagraph().setText("<b>⚙️ Step 1: Configuration</b><br>Go to Settings to set your Home Address, choose how far you're willing to walk, and pick the transport method Headstart should use for longer trips."));
+    guideSection.addWidget(CardService.newTextParagraph().setText("<b>⚙️ Step 1: Configuration</b><br>Go to Settings to set your Home Address, choose how far you're willing to walk, pick the transport method Headstart should use for longer trips, and decide when buffered-event reminders should appear."));
     guideSection.addWidget(CardService.newTextParagraph().setText("<b>⏱️ Step 2: Syncing</b><br>Select your calendars on the Dashboard. Headstart automatically buffers your travel time."));
     guideSection.addWidget(CardService.newTextParagraph().setText("<b>📅 Step 3: Single Events</b><br>Click any event and hit 'Create Buffer' to generate one instantly."));
-    guideSection.addWidget(CardService.newTextParagraph().setText("<b>🔕 Step 4: Avoid Double Alerts</b><br>Hide your buffered subscribed calendars or mute the original individual events so you only get alerts for your actual Headstart travel time!"));
+    guideSection.addWidget(CardService.newTextParagraph().setText("<b>🔕 Step 4: Avoid Double Alerts</b><br>Hide your buffered subscribed calendars or mute the original individual events so you only get alerts for your actual Headstart buffered event!"));
 
     builder.addSection(heroSection);
     builder.addSection(guideSection);
