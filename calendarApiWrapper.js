@@ -46,6 +46,11 @@ function createBufferDecisionService(settings, travelEngine) {
   throw new Error("BufferDecisionService is unavailable.");
 }
 
+/**
+ * Coordinates all CalendarApp and Advanced Calendar API operations for Headstart.
+ * It owns source-event lookup, shadow-event creation/update, metadata tags,
+ * conference syncing, reminders, and duplicate shadow cleanup.
+ */
 class CalendarManager {
   constructor(settings, travelEngine, dependencies) {
     this.settings = settings;
@@ -188,6 +193,10 @@ class CalendarManager {
     return this._findBuiltInEventFromAdvancedEvent(calendar, advancedEvent);
   }
 
+  /**
+   * Resolves a Calendar event across the inconsistent IDs returned by Apps Script,
+   * add-on payloads, recurring instances, and the Advanced Calendar API.
+   */
   getEventRobust(calendarId, eventId, eventHints) {
     const calendar = CalendarApp.getCalendarById(calendarId);
     if (!calendar) return null;
@@ -512,26 +521,90 @@ class CalendarManager {
     try { return event.getTag(CONFIG.TAG_PARENT_ID); } catch(e) { return null; }
   }
 
-  findLinkedShadowEvent(originalEvent) {
-    if (!originalEvent) return null;
+  _getShadowSearchCandidates(originalEvent) {
+    if (!originalEvent) return [];
     const targetCal = this.getOrCreateHeadstartCalendar();
-    if (!targetCal) return null;
+    if (!targetCal) return [];
 
     const searchStart = new Date(originalEvent.getStartTime().getTime() - (48 * 60 * 60 * 1000));
     const searchEnd = new Date(originalEvent.getEndTime().getTime() + (48 * 60 * 60 * 1000));
-    const candidates = targetCal.getEvents(searchStart, searchEnd);
-    
+    return targetCal.getEvents(searchStart, searchEnd);
+  }
+
+  _looksLikeHeadstartShadow(candidate, originalEvent) {
+    if (!candidate || !originalEvent) return false;
+
+    const candidateTitle = candidate.getTitle ? (candidate.getTitle() || "") : "";
+    const originalTitle = originalEvent.getTitle ? (originalEvent.getTitle() || "") : "";
+    if (candidateTitle !== originalTitle) return false;
+
+    const candidateEnd = candidate.getEndTime ? candidate.getEndTime() : null;
+    const originalEnd = originalEvent.getEndTime ? originalEvent.getEndTime() : null;
+    if (!candidateEnd || !originalEnd || candidateEnd.getTime() !== originalEnd.getTime()) return false;
+
+    const candidateStart = candidate.getStartTime ? candidate.getStartTime() : null;
+    const originalStart = originalEvent.getStartTime ? originalEvent.getStartTime() : null;
+    if (!candidateStart || !originalStart || candidateStart.getTime() > originalStart.getTime()) return false;
+
+    const description = candidate.getDescription ? (candidate.getDescription() || "") : "";
+    return description.indexOf("Headstart Buffered Event") !== -1;
+  }
+
+  _findLinkedShadowCandidates(originalEvent) {
+    const candidates = this._getShadowSearchCandidates(originalEvent);
+    const matches = [];
     const universalId = this.getUniversalEventId(originalEvent);
-    for (let i = 0; i < candidates.length; i++) {
-      if (candidates[i].getTag("HEADSTART_UNIVERSAL_ID") === universalId) return candidates[i];
-    }
-
     const googleId = originalEvent.getId();
+
     for (let i = 0; i < candidates.length; i++) {
-      if (candidates[i].getTag(CONFIG.TAG_PARENT_ID) === googleId) return candidates[i];
+      const candidate = candidates[i];
+      let candidateUniversalId = null;
+      let candidateParentId = null;
+      try { candidateUniversalId = candidate.getTag("HEADSTART_UNIVERSAL_ID"); } catch (err) {}
+      try { candidateParentId = candidate.getTag(CONFIG.TAG_PARENT_ID); } catch (err) {}
+
+      if (candidateUniversalId === universalId) {
+        matches.push(candidate);
+        continue;
+      }
+      if (candidateParentId === googleId) {
+        matches.push(candidate);
+        continue;
+      }
+      if (this._looksLikeHeadstartShadow(candidate, originalEvent)) {
+        matches.push(candidate);
+      }
     }
 
-    return null;
+    return matches;
+  }
+
+  _dedupeLinkedShadows(originalEvent, matches) {
+    const candidates = matches || [];
+    if (candidates.length <= 1) {
+      return candidates.length ? candidates[0] : null;
+    }
+
+    candidates.sort((left, right) => {
+      const leftStart = left.getStartTime ? left.getStartTime().getTime() : 0;
+      const rightStart = right.getStartTime ? right.getStartTime().getTime() : 0;
+      return leftStart - rightStart;
+    });
+
+    const keeper = candidates[0];
+    for (let i = 1; i < candidates.length; i++) {
+      try {
+        candidates[i].deleteEvent();
+      } catch (err) {
+        console.log("Failed to delete duplicate shadow: " + err);
+      }
+    }
+    return keeper;
+  }
+
+  findLinkedShadowEvent(originalEvent) {
+    if (!originalEvent) return null;
+    return this._dedupeLinkedShadows(originalEvent, this._findLinkedShadowCandidates(originalEvent));
   }
 
   _extractLookupHints(formInput) {
@@ -564,6 +637,11 @@ class CalendarManager {
     );
   }
 
+  /**
+   * Creates or updates the linked Headstart shadow event for a source event.
+   * The workflow computes context, decides buffer length, writes the shadow,
+   * syncs conference/reminder metadata, and links the two events with tags.
+   */
   processEventBuffer(originalEvent, originMode, originalCalId, formInput) {
     const eventContext = this.createEventContext(originalEvent, originalCalId, formInput);
     const decision = this.bufferDecisionService.decide(
@@ -630,6 +708,10 @@ class CalendarManager {
       minutes: bufferMinutes,
       conferenceFingerprint: appliedConferenceFingerprint
     });
+    this.linkShadowEvent(originalEvent, persistedShadow, originalCalId, {
+      minutes: bufferMinutes,
+      conferenceFingerprint: appliedConferenceFingerprint
+    });
     this._applyShadowReminderPolicy(targetCalendar.getId(), persistedShadow);
     try { originalEvent.removeAllReminders(); } catch (err) {}
     
@@ -642,7 +724,6 @@ class CalendarManager {
   }
 }
 
-// Support local Jest testing
 if (typeof module !== 'undefined') {
   module.exports = { CalendarManager };
 }

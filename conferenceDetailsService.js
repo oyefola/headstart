@@ -1,3 +1,7 @@
+/**
+ * Looks up native Google Calendar conference details and converts them into
+ * stable links, display text, and fingerprints for shadow-event synchronization.
+ */
 class ConferenceDetailsService {
   getForEvent(calendarId, event, lookupHints) {
     const lookupRequest = this._buildLookupRequest(event, lookupHints);

@@ -15,8 +15,7 @@ describe("AppSettings Class", () => {
     test("get() should retrieve properties with correct fallbacks", () => {
         const settings = settingsManager.get();
 
-        // Test that it pulled our mocked data from jest.setup.js
-        expect(settings.homeAddress).toBe("123 Fake Street, Sheffield");
+        expect(settings.homeAddress).toBe("123 Random Street, Sheffield");
 
         // Test that it correctly applies fallbacks for missing data
         expect(settings.extraBuffer).toBe("0");

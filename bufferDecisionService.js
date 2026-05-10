@@ -1,9 +1,17 @@
+/**
+ *  BufferDecisionService applies the rules that decide whether an event should receive a buffer
+ * and how many minutes that buffer should contain.
+ */
 class BufferDecisionService {
   constructor(settings, travelEngine) {
     this.settings = settings;
     this.travelEngine = travelEngine;
   }
 
+  /**
+   * Chooses between online fixed buffers, skipped online events, and dynamic
+   * travel-based buffers for physical events.
+   */
   decide(eventContext, originalEvent, originalCalId, originMode, options) {
     const decisionOptions = options || {};
 
@@ -31,7 +39,8 @@ class BufferDecisionService {
       smartDestination,
       originalEvent.getStartTime(),
       originalCalId,
-      originMode
+      originMode,
+      decisionOptions.customOriginLocation || ""
     );
 
     return {

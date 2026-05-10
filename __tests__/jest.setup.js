@@ -1,12 +1,9 @@
 /**
- * MOCKING GOOGLE APPS SCRIPT
- * This file creates "fake" versions of Google's global objects so that
- * Jest can run our code locally without crashing.
+ * This file sets up the mocks for the Google Apps Script environment.
  */
-
 const userPropertiesMock = {
     getProperties: jest.fn(() => ({
-        HOME_ADDRESS: "123 Fake Street, Sheffield",
+        HOME_ADDRESS: "123 Random Street, Sheffield",
         WALK_LIMIT: "2.5",
     })),
     getProperty: jest.fn((key) => {
@@ -55,7 +52,6 @@ global.Calendar = {
     },
 };
 
-// We mock Maps.newDirectionFinder to simulate what Google Maps returns
 global.Maps = {
     DirectionFinder: {
         Mode: {

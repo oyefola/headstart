@@ -1,5 +1,6 @@
 /**
- * Orchestrates background processing and batch operations.
+ * Runs scheduled and manual syncs for selected calendars.
+ * Also prunes stale Headstart shadow events.
  */
 class SyncEngine {
   constructor(appSettings, calManager) {
@@ -7,6 +8,9 @@ class SyncEngine {
     this.calManager = calManager;
   }
 
+  /**
+   * Installs the daily Apps Script trigger once, avoiding duplicate scheduled runs.
+   */
   installDailyTrigger() {
     const triggers = ScriptApp.getProjectTriggers();
     for (let i = 0; i < triggers.length; i++) {
@@ -15,6 +19,9 @@ class SyncEngine {
     ScriptApp.newTrigger('runBackgroundSync').timeBased().everyDays(1).create();
   }
 
+  /**
+   * Runs the saved background sync configuration, if the user has selected calendars.
+   */
   runBackgroundSync() {
     const syncState = this.appSettings.getSyncState();
     if (syncState.savedIds) {
@@ -47,6 +54,10 @@ class SyncEngine {
     }
   }
 
+  /**
+   * Removes Headstart shadow events whose source event is missing or no longer
+   * matches the expected time window.
+   */
   pruneOrphanedShadows() {
     const targetCal = this.calManager.getOrCreateHeadstartCalendar();
     const now = new Date();
@@ -86,6 +97,10 @@ class SyncEngine {
     return pruned;
   }
 
+  /**
+   * Recalculates buffers for upcoming events across selected calendars.
+   * Existing shadows are refreshed only when source details have changed.
+   */
   runSyncEngine(calendarIds) {
     const prunedCount = this.pruneOrphanedShadows();
     console.log(`Garbage Collection: Pruned ${prunedCount} orphaned shadow events.`);

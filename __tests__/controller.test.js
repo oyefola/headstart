@@ -196,7 +196,11 @@ describe("handleCreateBuffer", () => {
     global.UIBuilder = jest.fn(() => ({
       createUnsavedEventCard: jest.fn(() => ({ type: "unsaved" })),
       createSuccessCard: jest.fn(() => ({ type: "success" })),
-      createDisambiguationCard: createDisambiguationCardMock
+      createDisambiguationCard: createDisambiguationCardMock,
+      createOriginSelectionCard: jest.fn(() => ({ type: "origin-selection" })),
+      createShadowInfoCard: jest.fn(() => ({ type: "shadow-info" })),
+      createBufferDeletedCard: jest.fn(() => ({ type: "buffer-deleted" })),
+      createBufferChangeCancelledCard: jest.fn(() => ({ type: "buffer-unchanged" }))
     }));
     global.CalendarApp.getAllCalendars = jest.fn(() => []);
 
@@ -300,6 +304,83 @@ describe("handleCreateBuffer", () => {
     expect(global.CardService.newNotification().setText).toHaveBeenCalledWith("Buffer refreshed in the Headstart calendar.");
   });
 
+  test("blocks create-buffer actions on Headstart shadow events", () => {
+    const shadowEvent = {
+      getId: jest.fn(() => "shadow-1"),
+      getStartTime: jest.fn(() => new Date("2099-03-18T09:45:00Z")),
+      getEndTime: jest.fn(() => new Date("2099-03-18T11:00:00Z")),
+      isAllDayEvent: jest.fn(() => false)
+    };
+
+    global.CalendarManager = jest.fn(() => ({
+      getEventRobust: jest.fn(() => shadowEvent),
+      getParentIdFromShadow: jest.fn(() => "parent-1"),
+      processEventBuffer: processEventBufferMock
+    }));
+    global.CalendarApp.getCalendarById = jest.fn(() => ({
+      getName: jest.fn(() => "Headstart")
+    }));
+
+    const { handleCreateBuffer } = require("../controller.js");
+    const result = handleCreateBuffer({
+      parameters: {
+        calendarId: "headstart-cal",
+        eventId: "shadow-1"
+      },
+      calendar: {}
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(global.UIBuilder.mock.results[0].value.createShadowInfoCard).toHaveBeenCalledWith(shadowEvent);
+    expect(processEventBufferMock).not.toHaveBeenCalled();
+  });
+
+  test("deletes an active buffer when the online confirmation asks to remove it", () => {
+    const originalEvent = {
+      getId: jest.fn(() => "event-1"),
+      getStartTime: jest.fn(() => new Date("2099-03-18T10:00:00Z")),
+      getEndTime: jest.fn(() => new Date("2099-03-18T11:00:00Z")),
+      isAllDayEvent: jest.fn(() => false)
+    };
+    const existingShadow = {
+      deleteEvent: jest.fn()
+    };
+    global.CalendarManager = jest.fn(() => ({
+      getEventRobust: jest.fn(() => originalEvent),
+      getParentIdFromShadow: jest.fn(() => null),
+      findLinkedShadowEvent: jest.fn(() => existingShadow),
+      processEventBuffer: processEventBufferMock
+    }));
+
+    const { handleDeleteBuffer } = require("../controller.js");
+    handleDeleteBuffer({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1"
+      },
+      calendar: {}
+    });
+
+    expect(existingShadow.deleteEvent).toHaveBeenCalled();
+    expect(global.UIBuilder.mock.results[0].value.createBufferDeletedCard).toHaveBeenCalled();
+    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith("Existing Headstart buffer deleted.");
+    expect(processEventBufferMock).not.toHaveBeenCalled();
+  });
+
+  test("cancels a buffer replacement without touching the existing buffer", () => {
+    const { handleCancelBufferReplacement } = require("../controller.js");
+    handleCancelBufferReplacement({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1"
+      }
+    });
+
+    expect(global.UIBuilder.mock.results[0].value.createBufferChangeCancelledCard).toHaveBeenCalled();
+    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith("Buffer change cancelled.");
+    expect(processEventBufferMock).not.toHaveBeenCalled();
+  });
+
   test("prefers an explicitly resolved location when one is already provided in parameters", () => {
     const { handleCreateBuffer } = require("../controller.js");
 
@@ -350,7 +431,7 @@ describe("handleCreateBuffer", () => {
     );
   });
 
-  test("continues with a manual physical location when only that value is provided", () => {
+  test("asks for an origin when only a manual physical location is provided", () => {
     const { onContinueBufferSetup } = require("../controller.js");
 
     onContinueBufferSetup({
@@ -364,13 +445,42 @@ describe("handleCreateBuffer", () => {
       calendar: {}
     });
 
+    expect(processEventBufferMock).not.toHaveBeenCalled();
+    expect(global.UIBuilder.mock.results[1].value.createOriginSelectionCard).toHaveBeenCalledWith(
+      "calendar-1",
+      "event-1",
+      expect.objectContaining({
+        attendanceMode: "physical",
+        resolvedLocation: "Room 101"
+      })
+    );
+  });
+
+  test("continues buffer creation with the selected custom origin", () => {
+    const { handleOriginSelection } = require("../controller.js");
+
+    handleOriginSelection({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1",
+        attendanceMode: "physical",
+        resolvedLocation: "Room 101",
+        originMode: "CUSTOM"
+      },
+      formInput: {
+        customOriginLocation: "Library"
+      },
+      calendar: {}
+    });
+
     expect(processEventBufferMock).toHaveBeenCalledWith(
       expect.any(Object),
-      "AUTO",
+      "CUSTOM",
       "calendar-1",
       expect.objectContaining({
         attendanceMode: "physical",
-        resolvedManualLocation: "Room 101"
+        resolvedManualLocation: "Room 101",
+        customOriginLocation: "Library"
       })
     );
   });
@@ -826,12 +936,15 @@ describe("onEventOpen", () => {
       expect.objectContaining({
         requiresModeSelection: true,
         physicalLocation: "Room 101",
-        meetingLink: "https://meet.google.com/hybrid-link"
+        meetingLink: "https://meet.google.com/hybrid-link",
+        actionContext: expect.objectContaining({
+          hasActiveBuffer: "true"
+        })
       })
     );
   });
 
-  test("resolves a tapped shadow back to its parent event before building context", () => {
+  test("shows shadow info for a tapped shadow even if the parent still exists", () => {
     const shadowEvent = {
       getId: jest.fn(() => "shadow-1"),
       getTitle: jest.fn(() => "Shadow"),
@@ -839,29 +952,15 @@ describe("onEventOpen", () => {
       getEndTime: jest.fn(() => new Date("2099-03-19T11:00:00Z")),
       isAllDayEvent: jest.fn(() => false)
     };
-    const parentEvent = {
-      getId: jest.fn(() => "event-1"),
-      getTitle: jest.fn(() => "Planning"),
-      getStartTime: jest.fn(() => new Date("2099-03-19T10:00:00Z")),
-      getEndTime: jest.fn(() => new Date("2099-03-19T11:00:00Z")),
-      isAllDayEvent: jest.fn(() => false)
-    };
-    const getEventRobust = jest
-      .fn()
-      .mockReturnValueOnce(shadowEvent)
-      .mockReturnValueOnce(parentEvent);
-    const findLinkedShadowEvent = jest.fn(() => null);
-    const createEventContext = jest.fn(() => ({
-      rawLocation: "Room 101",
-      meetingLink: "",
-      nativeConferenceData: null
+    global.CalendarApp.getCalendarById = jest.fn(() => ({
+      getName: jest.fn(() => "Headstart")
     }));
 
     global.CalendarManager = jest.fn(() => ({
-      getEventRobust,
+      getEventRobust: jest.fn(() => shadowEvent),
       getParentIdFromShadow: jest.fn(() => "parent-1"),
-      findLinkedShadowEvent,
-      createEventContext
+      findLinkedShadowEvent: jest.fn(() => null),
+      createEventContext: jest.fn()
     }));
 
     const { onEventOpen } = require("../controller.js");
@@ -874,9 +973,7 @@ describe("onEventOpen", () => {
       }
     });
 
-    expect(result).toEqual({ type: "initial-context" });
-    expect(findLinkedShadowEvent).toHaveBeenCalledWith(parentEvent);
-    expect(createEventContext).toHaveBeenCalledWith(parentEvent, "calendar-1", {});
+    expect(result).toEqual({ type: "shadow-info" });
   });
 });
 
@@ -928,7 +1025,8 @@ describe("controller navigation and sync actions", () => {
         eventStart: "2099-04-17T10:00:00.000Z",
         eventEnd: "2099-04-17T11:00:00.000Z",
         eventConferenceData: "encoded-data",
-        eventHangoutLink: "https://meet.google.com/hybrid-link"
+        eventHangoutLink: "https://meet.google.com/hybrid-link",
+        hasActiveBuffer: "true"
       }
     });
 
@@ -939,7 +1037,74 @@ describe("controller navigation and sync actions", () => {
       "https://meet.google.com/hybrid-link",
       expect.objectContaining({
         eventConferenceData: "encoded-data",
-        eventHangoutLink: "https://meet.google.com/hybrid-link"
+        eventHangoutLink: "https://meet.google.com/hybrid-link",
+        hasActiveBuffer: "true"
+      })
+    );
+  });
+
+  test("onConfirmBufferReplacement asks whether to replace or cancel an online active buffer change", () => {
+    global.AppSettings = jest.fn(() => ({
+      get: jest.fn(() => ({ bufferOnline: "true" }))
+    }));
+    const createBufferReplacementChoiceCard = jest.fn(() => ({ type: "replacement-choice" }));
+    global.UIBuilder = jest.fn(() => ({
+      createBufferReplacementChoiceCard
+    }));
+
+    const { onConfirmBufferReplacement } = require("../controller.js");
+    onConfirmBufferReplacement({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1",
+        resolvedLocation: "https://meet.google.com/hybrid-link",
+        attendanceMode: "online",
+        eventConferenceData: "encoded-data",
+        eventHangoutLink: "https://meet.google.com/hybrid-link",
+        hasActiveBuffer: "true"
+      }
+    });
+
+    expect(createBufferReplacementChoiceCard).toHaveBeenCalledWith(
+      "calendar-1",
+      "event-1",
+      "https://meet.google.com/hybrid-link",
+      expect.objectContaining({
+        attendanceMode: "online",
+        eventConferenceData: "encoded-data",
+        eventHangoutLink: "https://meet.google.com/hybrid-link",
+        hasActiveBuffer: "true"
+      })
+    );
+  });
+
+  test("onConfirmBufferReplacement also supports replacing with a physical buffer", () => {
+    global.AppSettings = jest.fn(() => ({
+      get: jest.fn(() => ({ bufferOnline: "true" }))
+    }));
+    const createBufferReplacementChoiceCard = jest.fn(() => ({ type: "replacement-choice" }));
+    global.UIBuilder = jest.fn(() => ({
+      createBufferReplacementChoiceCard
+    }));
+
+    const { onConfirmBufferReplacement } = require("../controller.js");
+    onConfirmBufferReplacement({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1",
+        resolvedLocation: "Room 101",
+        attendanceMode: "physical",
+        hasActiveBuffer: "true"
+      }
+    });
+
+    expect(createBufferReplacementChoiceCard).toHaveBeenCalledWith(
+      "calendar-1",
+      "event-1",
+      "Room 101",
+      expect.objectContaining({
+        attendanceMode: "physical",
+        hasActiveBuffer: "true"
       })
     );
   });

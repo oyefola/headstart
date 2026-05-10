@@ -69,7 +69,7 @@ describe("ShadowDescriptionBuilder", () => {
     expect(plainText).not.toContain("<div");
   });
 
-  test("build() includes the explanatory text, start time, plain-text conference details, and notes", () => {
+  test("build() includes the start time, plain-text conference details, and notes", () => {
     const builder = new ShadowDescriptionBuilder();
 
     const description = builder.build(
@@ -79,7 +79,6 @@ describe("ShadowDescriptionBuilder", () => {
       new Date("2026-03-24T10:00:00Z")
     );
 
-    expect(description).toContain("This event was created by Headstart to protect the time before your linked event.");
     expect(description).toContain("Original Start Time");
     expect(description).toContain("Conferencing Details");
     expect(description).toContain("Original Event Notes");

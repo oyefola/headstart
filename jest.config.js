@@ -1,5 +1,5 @@
 /**
- * Jest configuration to automatically load our Google Apps Script mocks
+ * Jest configuration to automatically load Google Apps Script mocks
  * before running any tests.
  */
 module.exports = {

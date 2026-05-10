@@ -65,8 +65,7 @@ class ShadowDescriptionBuilder {
     const plainConferenceDetails = this._toPlainText(conferenceDetailsHtml);
     const plainOriginalDescription = this._toPlainText(originalDescription);
     let description = "Headstart Buffered Event\n" +
-      "------------------------\n" +
-      "This event was created by Headstart to protect the time before your linked event.";
+      "------------------------";
 
     if (formattedOriginalStart) {
       description += "\n\nOriginal Start Time: " + formattedOriginalStart;

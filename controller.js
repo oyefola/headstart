@@ -110,6 +110,21 @@ function findEventAndCalendar(calManager, initialCalId, eventId, eventHints) {
   return { event: null, calId: initialCalId };
 }
 
+function isHeadstartCalendarId(calendarId) {
+  if (!calendarId || typeof CalendarApp === "undefined" || !CalendarApp.getCalendarById) return false;
+
+  try {
+    const calendar = CalendarApp.getCalendarById(calendarId);
+    return !!(calendar && calendar.getName && calendar.getName() === CONFIG.CALENDAR_NAME);
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Builds the add-on homepage, showing onboarding until the user completes it.
+ * This is called directly by the Apps Script manifest.
+ */
 function onHomepage(e) {
   const appSettings = new AppSettings();
   const ui = new UIBuilder(appSettings.get());
@@ -120,10 +135,16 @@ function onHomepage(e) {
   return ui.createDashboardCard(appSettings);
 }
 
+/**
+ * Handles the Calendar event-open surface and chooses the next card to show.
+ * It validates unsupported events, detects existing Headstart shadows, and
+ * routes the user into manual details, hybrid mode selection, or buffer refresh.
+ */
 function onEventOpen(e) {
   const calendarId = e.calendar.calendarId;
   const eventId = e.calendar.id;
   const eventHints = buildEventLookupHints({}, e.calendar);
+  // logs to help debug event data and conference data availability in the event open trigger, which can be inconsistent across accounts and event types
   console.log(
     "Event open conference state: canSeeConferenceData=" + !!(e.calendar.capabilities && e.calendar.capabilities.canSeeConferenceData) +
     ", canSetConferenceData=" + !!(e.calendar.capabilities && e.calendar.capabilities.canSetConferenceData) +
@@ -151,20 +172,14 @@ function onEventOpen(e) {
   }
 
   const parentId = calManager.getParentIdFromShadow(event);
-  if (parentId) {
-    const parentEventResult = findEventAndCalendar(calManager, activeCalId, parentId);
-    if (parentEventResult.event) {
-      event = parentEventResult.event;
-      activeCalId = parentEventResult.calId; 
-      activeEventHints = {};
-    } else {
-      return ui.createShadowInfoCard(event);
-    }
+  if (parentId || isHeadstartCalendarId(activeCalId)) {
+    return ui.createShadowInfoCard(event);
   }
   
   const existingShadow = calManager.findLinkedShadowEvent(event);
   const eventContext = calManager.createEventContext(event, activeCalId, activeEventHints);
   const actionContext = buildActionContext(event, activeEventHints, eventContext);
+  actionContext.hasActiveBuffer = existingShadow ? "true" : "";
   const needsManualDetails = !eventContext.rawLocation && !eventContext.meetingLink;
   const isHybridEvent = !!(
     eventContext.rawLocation &&
@@ -191,12 +206,17 @@ function onEventOpen(e) {
   return ui.createInitialContextCard(event, activeCalId, event.getId(), existingShadow, {
     actionContext: actionContext,
     requiresModeSelection: !!(existingShadow && isHybridEvent),
+    requiresOriginSelection: !eventContext.isOnline,
     physicalLocation: eventContext.rawLocation,
     meetingLink: eventContext.meetingLink
   });
 }
 
-//Instantly calculates and creates the buffer, skipping any configuration screens.
+/**
+ * Creates or refreshes a Headstart buffer for a single event.
+ * The selected attendance mode and any manual location/link details are passed
+ * into CalendarManager so the same workflow supports online and physical events.
+ */
 function handleCreateBuffer(e) {
   const calendarId = e.parameters.calendarId;
   const eventId = e.parameters.eventId;
@@ -230,15 +250,25 @@ function handleCreateBuffer(e) {
       .build();
   }
 
+  const parentId = calManager.getParentIdFromShadow ? calManager.getParentIdFromShadow(originalEvent) : null;
+  if (parentId || isHeadstartCalendarId(activeCalId)) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(ui.createShadowInfoCard(originalEvent)))
+      .build();
+  }
+
   const manualPhysicalLocation = readFormInputValue(e.formInput, "manualPhysicalLocation");
   const manualMeetingLink = readFormInputValue(e.formInput, "manualMeetingLink");
   const resolvedManualLocation = e.parameters.resolvedLocation ||
     (e.parameters.attendanceMode === "online" ? manualMeetingLink : manualPhysicalLocation) ||
     "";
   const attendanceMode = e.parameters.attendanceMode || "";
+  const originMode = e.parameters.originMode || "AUTO";
+  const customOriginLocation = e.parameters.customOriginLocation || readFormInputValue(e.formInput, "customOriginLocation");
   const bufferOptions = {
     resolvedManualLocation: resolvedManualLocation,
     attendanceMode: attendanceMode,
+    customOriginLocation: customOriginLocation,
     forceOnlineBuffer: true,
     eventApiId: eventHints.apiEventId,
     recurringEventId: eventHints.recurringEventId,
@@ -250,7 +280,7 @@ function handleCreateBuffer(e) {
 
   let result;
   try {
-    result = calManager.processEventBuffer(originalEvent, "AUTO", activeCalId, bufferOptions);
+    result = calManager.processEventBuffer(originalEvent, originMode, activeCalId, bufferOptions);
   } catch (err) {
     console.log("Single Event Buffer Error: " + err);
     return CardService.newActionResponseBuilder()
@@ -276,6 +306,10 @@ function handleCreateBuffer(e) {
     .build();
 }
 
+/**
+ * Continues from the manual details card after the user enters a location,
+ * meeting link, or both. Hybrid manual input is sent through mode selection.
+ */
 function onContinueBufferSetup(e) {
   const settings = new AppSettings().get();
   const ui = new UIBuilder(settings);
@@ -302,7 +336,8 @@ function onContinueBufferSetup(e) {
             eventStart: e.parameters.eventStart || "",
             eventEnd: e.parameters.eventEnd || "",
             eventConferenceData: e.parameters.eventConferenceData || "",
-            eventHangoutLink: e.parameters.eventHangoutLink || ""
+            eventHangoutLink: e.parameters.eventHangoutLink || "",
+            hasActiveBuffer: e.parameters.hasActiveBuffer || ""
           }
         )
       ))
@@ -314,6 +349,14 @@ function onContinueBufferSetup(e) {
     resolvedLocation: manualMeetingLink || manualPhysicalLocation
   });
 
+  if (!manualMeetingLink && manualPhysicalLocation) {
+    return onShowOriginSelection({
+      parameters: nextParameters,
+      formInput: e.formInput || {},
+      calendar: e.calendar || {}
+    });
+  }
+
   return handleCreateBuffer({
     parameters: nextParameters,
     formInput: e.formInput || {},
@@ -321,6 +364,10 @@ function onContinueBufferSetup(e) {
   });
 }
 
+/**
+ * Opens the hybrid attendance selector for events with both a physical location
+ * and a meeting link. Existing buffers carry a flag so replacement is confirmed.
+ */
 function onShowBufferModeSelection(e) {
   const settings = new AppSettings().get();
   const ui = new UIBuilder(settings);
@@ -338,13 +385,169 @@ function onShowBufferModeSelection(e) {
           eventStart: e.parameters.eventStart || "",
           eventEnd: e.parameters.eventEnd || "",
           eventConferenceData: e.parameters.eventConferenceData || "",
-          eventHangoutLink: e.parameters.eventHangoutLink || ""
+          eventHangoutLink: e.parameters.eventHangoutLink || "",
+          hasActiveBuffer: e.parameters.hasActiveBuffer || ""
         }
       )
     ))
     .build();
 }
 
+function buildParameterActionContext(parameters) {
+  const rawParameters = parameters || {};
+  return {
+    eventApiId: rawParameters.eventApiId || "",
+    recurringEventId: rawParameters.recurringEventId || "",
+    eventStart: rawParameters.eventStart || "",
+    eventEnd: rawParameters.eventEnd || "",
+    eventConferenceData: rawParameters.eventConferenceData || "",
+    eventHangoutLink: rawParameters.eventHangoutLink || "",
+    attendanceMode: rawParameters.attendanceMode || "",
+    resolvedLocation: rawParameters.resolvedLocation || "",
+    originMode: rawParameters.originMode || "",
+    customOriginLocation: rawParameters.customOriginLocation || "",
+    hasActiveBuffer: rawParameters.hasActiveBuffer || ""
+  };
+}
+
+function onShowOriginSelection(e) {
+  const settings = new AppSettings().get();
+  const ui = new UIBuilder(settings);
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(
+      ui.createOriginSelectionCard(
+        e.parameters.calendarId,
+        e.parameters.eventId,
+        buildParameterActionContext(e.parameters)
+      )
+    ))
+    .build();
+}
+
+function handleOriginSelection(e) {
+  const originMode = e.parameters.originMode || "AUTO";
+  const customOriginLocation = readFormInputValue(e.formInput, "customOriginLocation") ||
+    e.parameters.customOriginLocation ||
+    "";
+
+  if (originMode === "CUSTOM" && !customOriginLocation) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("Add a starting location, or choose Home or Last Event Location."))
+      .build();
+  }
+
+  return handleCreateBuffer({
+    parameters: Object.assign({}, e.parameters, {
+      customOriginLocation: customOriginLocation
+    }),
+    formInput: e.formInput || {},
+    calendar: e.calendar || {}
+  });
+}
+
+/**
+ * Confirms replacement before changing an already-active hybrid buffer.
+ * This keeps online-to-physical and physical-to-online changes symmetric.
+ */
+function onConfirmBufferReplacement(e) {
+  const settings = new AppSettings().get();
+  const ui = new UIBuilder(settings);
+  const attendanceMode = e.parameters.attendanceMode || "";
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(
+      ui.createBufferReplacementChoiceCard(
+        e.parameters.calendarId,
+        e.parameters.eventId,
+        e.parameters.resolvedLocation || "",
+        Object.assign(buildParameterActionContext(e.parameters), {
+          attendanceMode: attendanceMode,
+          hasActiveBuffer: e.parameters.hasActiveBuffer || "true"
+        })
+      )
+    ))
+    .build();
+}
+
+/**
+ * Deletes an existing linked Headstart buffer for the selected source event.
+ * Used when the user explicitly decides the active shadow event is no longer needed.
+ */
+function handleDeleteBuffer(e) {
+  const calendarId = e.parameters.calendarId;
+  const eventId = e.parameters.eventId;
+  const eventHints = buildEventLookupHints(e.parameters, e.calendar);
+  const appSettings = new AppSettings();
+  const settings = appSettings.get();
+  const travelEngine = new TravelEngine(settings);
+  const calManager = new CalendarManager(settings, travelEngine);
+  const ui = new UIBuilder(settings);
+
+  let { event: originalEvent, calId: activeCalId } = findEventAndCalendar(calManager, calendarId, eventId, eventHints);
+  if (!originalEvent) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(ui.createUnreadableEventCard()))
+      .build();
+  }
+  if (originalEvent.isAllDayEvent && originalEvent.isAllDayEvent()) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(ui.createAllDayEventCard()))
+      .build();
+  }
+  if (originalEvent.getStartTime() < new Date()) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(ui.createPastEventCard()))
+      .build();
+  }
+
+  const parentId = calManager.getParentIdFromShadow ? calManager.getParentIdFromShadow(originalEvent) : null;
+  if (parentId || isHeadstartCalendarId(activeCalId)) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(ui.createShadowInfoCard(originalEvent)))
+      .build();
+  }
+
+  const existingShadow = calManager.findLinkedShadowEvent(originalEvent);
+  if (!existingShadow) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("No active Headstart buffer found."))
+      .build();
+  }
+
+  try {
+    existingShadow.deleteEvent();
+  } catch (err) {
+    console.log("Buffer delete error: " + err);
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("Headstart couldn't delete the existing buffer."))
+      .build();
+  }
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(ui.createBufferDeletedCard()))
+    .setNotification(CardService.newNotification().setText("Existing Headstart buffer deleted."))
+    .setStateChanged(true)
+    .build();
+}
+
+/**
+ * Cancels a pending buffer replacement and leaves the existing shadow event unchanged.
+ */
+function handleCancelBufferReplacement(e) {
+  const settings = new AppSettings().get();
+  const ui = new UIBuilder(settings);
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(ui.createBufferChangeCancelledCard()))
+    .setNotification(CardService.newNotification().setText("Buffer change cancelled."))
+    .build();
+}
+
+/**
+ * Runs a user-triggered batch sync for selected calendars and stores the selection
+ * for future scheduled background syncs.
+ */
 function handleBatchSync(e) {
   const appSettings = new AppSettings();
   const settings = appSettings.get();
@@ -370,6 +573,9 @@ function handleBatchSync(e) {
   return ui.createBatchSuccessCard(stats);
 }
 
+/**
+ * Entry point invoked by the daily Apps Script trigger for automatic sync.
+ */
 function runBackgroundSync() {
   console.log("Starting Daily Auto-Sync...");
   const appSettings = new AppSettings();
@@ -402,6 +608,9 @@ function onNavigateToTutorial(e) {
   return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(ui.createOnboardingCard(true))).build();
 }
 
+/**
+ * Persists settings from the CardService form and ensures the Headstart calendar exists.
+ */
 function handleSaveSettings(e) {
   const appSettings = new AppSettings();
   appSettings.save(e.formInput);
@@ -425,11 +634,18 @@ if (typeof module !== 'undefined') {
     readFormInputValue,
     buildActionContext,
     findEventAndCalendar,
+    isHeadstartCalendarId,
     onHomepage,
     onEventOpen,
     handleCreateBuffer,
     onContinueBufferSetup,
     onShowBufferModeSelection,
+    buildParameterActionContext,
+    onShowOriginSelection,
+    handleOriginSelection,
+    onConfirmBufferReplacement,
+    handleDeleteBuffer,
+    handleCancelBufferReplacement,
     handleBatchSync,
     runBackgroundSync,
     handleFinishOnboarding,

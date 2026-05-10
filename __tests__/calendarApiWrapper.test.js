@@ -15,8 +15,6 @@ describe("CalendarManager shadow description", () => {
       "",
       new Date("2026-03-24T10:00:00Z")
     );
-
-    expect(description).toContain("This event was created by Headstart to protect the time before your linked event.");
     expect(description).toContain("Meeting Link");
     expect(description).toContain("Original Event Notes");
     expect(description).toContain("Original Start Time");
@@ -812,6 +810,39 @@ describe("CalendarManager helper coverage", () => {
     })).toBeNull();
   });
 
+  test("findLinkedShadowEvent() falls back to Headstart shadow markers and removes duplicate shadows", () => {
+    const keptShadow = {
+      getTag: jest.fn(() => null),
+      getTitle: jest.fn(() => "Planning"),
+      getStartTime: jest.fn(() => new Date("2026-03-18T09:30:00.000Z")),
+      getEndTime: jest.fn(() => new Date("2026-03-18T11:00:00.000Z")),
+      getDescription: jest.fn(() => "Headstart Buffered Event\nOriginal Start Time: Tue, 18 Mar 2026 at 10:00"),
+      deleteEvent: jest.fn()
+    };
+    const duplicateShadow = {
+      getTag: jest.fn(() => null),
+      getTitle: jest.fn(() => "Planning"),
+      getStartTime: jest.fn(() => new Date("2026-03-18T09:45:00.000Z")),
+      getEndTime: jest.fn(() => new Date("2026-03-18T11:00:00.000Z")),
+      getDescription: jest.fn(() => "Headstart Buffered Event\nOriginal Start Time: Tue, 18 Mar 2026 at 10:00"),
+      deleteEvent: jest.fn()
+    };
+    const originalEvent = {
+      getId: jest.fn(() => "parent-1"),
+      getTitle: jest.fn(() => "Planning"),
+      getStartTime: jest.fn(() => new Date("2026-03-18T10:00:00.000Z")),
+      getEndTime: jest.fn(() => new Date("2026-03-18T11:00:00.000Z"))
+    };
+    const manager = createManager();
+    manager.getOrCreateHeadstartCalendar = jest.fn(() => ({
+      getEvents: jest.fn(() => [duplicateShadow, keptShadow])
+    }));
+
+    expect(manager.findLinkedShadowEvent(originalEvent)).toBe(keptShadow);
+    expect(duplicateShadow.deleteEvent).toHaveBeenCalled();
+    expect(keptShadow.deleteEvent).not.toHaveBeenCalled();
+  });
+
   test("processEventBuffer() deletes skipped shadows, updates existing ones, and surfaces save verification failures", () => {
     const originalEvent = {
       getId: jest.fn(() => "parent-1"),
@@ -890,6 +921,7 @@ describe("CalendarManager helper coverage", () => {
     expect(existingShadow.setTime).toHaveBeenCalled();
     expect(existingShadow.setLocation).toHaveBeenCalledWith("Room 101");
     expect(manager._applyShadowReminderPolicy).toHaveBeenCalledWith("headstart-cal", persistedShadow);
+    expect(persistedShadow.setTag).toHaveBeenCalled();
 
     expect(() => manager.processEventBuffer(originalEvent, "AUTO", "calendar-1", {})).toThrow(
       "Failed to create or update the Headstart buffer event."

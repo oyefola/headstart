@@ -87,7 +87,8 @@ describe("BufferDecisionService", () => {
       "Resolved destination",
       originalEvent.getStartTime(),
       "calendar-1",
-      "AUTO"
+      "AUTO",
+      ""
     );
     expect(result).toEqual({
       skipped: false,

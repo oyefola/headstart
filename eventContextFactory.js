@@ -13,12 +13,20 @@ function createConferenceDetailsService() {
   };
 }
 
+/**
+ * Normalizes a raw Calendar event into the context Headstart needs for decisions:
+ * physical location, meeting link, native conference data, and attendance mode.
+ */
 class EventContextFactory {
   constructor(conferenceDetailsService) {
     this.meetingRegex = /(https?:\/\/(?:[\w-]+\.)?(?:zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com|chime\.aws)[^\s"<>]+)/i;
     this.conferenceDetailsService = conferenceDetailsService || createConferenceDetailsService();
   }
 
+  /**
+   * Builds a normalized event context from CalendarApp fields, Advanced Calendar
+   * conference details, and any manual user override from the add-on UI.
+   */
   createFromEvent(event, calendarId, formInput, lookupHints) {
     const manualOptions = formInput || {};
     const attendanceMode = manualOptions.attendanceMode || "";
