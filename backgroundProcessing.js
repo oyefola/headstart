@@ -173,7 +173,6 @@ class SyncEngine {
   }
 }
 
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = { SyncEngine };
 }

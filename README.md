@@ -28,6 +28,9 @@ The production Apps Script files intentionally live at the repository root rathe
 ## Local Workflow
 
 Run tests:
+```bash
+npm install
+```
 
 ```bash
 npm test -- --runInBand
@@ -39,11 +42,38 @@ Run coverage:
 npm run test:coverage
 ```
 
+## Live Testing
+
+Some Headstart behaviour must be checked inside Google Calendar because the local Jest suite can only mock Google Apps Script services. Live testing is especially important for CardService rendering, event-open navigation, Calendar permissions, subscribed calendars, recurring event IDs, conference-data copying, reminders, and Maps-backed travel estimates.
+
+The Apps Script project can be opened here(University of Sheffield Account required):
+
+[Headstart Apps Script project](https://script.google.com/d/1WshgiPtgloGieUV3E6fApsRd7kfBDbButizcOoTZ6_Rz6e6TMUSCkJGj/edit?usp=sharing)
+
+To install the test add-on into Google Calendar:
+
+1. Open the Apps Script project link above.
+2. Click `Deploy` in the top-right corner.
+3. Choose `Test deployments`.
+4. Select the `Google Workspace add-on` test deployment.
+5. In the `Deployments` dropdown, choose `Test latest code`.
+6. Confirm that the application is `Calendar`.
+7. Click `Install`, then `Done`.
+8. Open Google Calendar and use the Headstart add-on from the Calendar side panel or event-open surface.
+
+Step 1
+![Click deploy in top left corner](readme_images/deploy_image.png)
+
+Step 2
+![Select the `Google Workspace add-on` test deployment](readme_images/test_deployment_image.png)
+
 ## Test Suite
 
 The local suite lives in [__tests__](/Users/folademiladeoyeleke/headstart-local/__tests__).
 
-Some files use `/* istanbul ignore next */` around small Apps Script/Node compatibility branches, such as `module.exports` blocks or dependency factories. These branches exist so the same files can run both inside Google Apps Script and in the local Jest test environment. They are excluded from coverage because they are environment glue rather than application behaviour.
+The local tests cover the deterministic business logic and the most important add-on flows through mocked Google Apps Script services. Some parts of Headstart can only be fully tested live inside Google Calendar, especially CardService rendering, event-open navigation, Advanced Calendar API permissions, and behaviour that depends on real Calendar event resources. Those areas are still supported by unit tests around their parameters and fallback decisions, but final confidence comes from live add-on testing.
+
+The `if (typeof module !== 'undefined') { module.exports = ... }` blocks at the bottom of files such as [settingsManager.js](/Users/folademiladeoyeleke/headstart-local/settingsManager.js) are only there for local Jest tests. Google Apps Script does not use CommonJS modules, but Node/Jest needs `module.exports` so individual classes such as `AppSettings` can be imported and tested locally.
 
 - [appSettings.test.js](/Users/folademiladeoyeleke/headstart-local/__tests__/appSettings.test.js): persistence defaults and sync-state formatting.
 - [backgroundProcessing.test.js](/Users/folademiladeoyeleke/headstart-local/__tests__/backgroundProcessing.test.js): batch recalculation and skip logic.

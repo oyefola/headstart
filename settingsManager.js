@@ -78,8 +78,7 @@ class AppSettings {
   }
 }
 
-// Support local Jest testing
-/* istanbul ignore next */
+ 
 if (typeof module !== 'undefined') {
   module.exports = { AppSettings };
 }

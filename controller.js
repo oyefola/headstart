@@ -269,7 +269,7 @@ function handleCreateBuffer(e) {
     resolvedManualLocation: resolvedManualLocation,
     attendanceMode: attendanceMode,
     customOriginLocation: customOriginLocation,
-    forceOnlineBuffer: true,
+    forceOnlineBuffer: false,
     eventApiId: eventHints.apiEventId,
     recurringEventId: eventHints.recurringEventId,
     eventStart: serializeEventTime(eventHints.startTime || originalEvent.getStartTime()),
@@ -290,8 +290,8 @@ function handleCreateBuffer(e) {
 
   if (result.skipped) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("Buffer skipped (Online disabled in Settings)."))
-      .setNavigation(CardService.newNavigation().popCard())
+      .setNavigation(CardService.newNavigation().updateCard(ui.createOnlineBufferDisabledCard()))
+      .setNotification(CardService.newNotification().setText("Online buffering is turned off in Settings."))
       .build();
   }
 

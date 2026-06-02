@@ -1,4 +1,3 @@
-/* istanbul ignore next */
 function createConferenceDetailsService() {
   if (typeof ConferenceDetailsService !== 'undefined') {
     return new ConferenceDetailsService();
@@ -106,7 +105,6 @@ class EventContextFactory {
   }
 }
 
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = { EventContextFactory };
 }

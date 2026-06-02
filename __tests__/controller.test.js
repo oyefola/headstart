@@ -195,7 +195,11 @@ describe("handleCreateBuffer", () => {
     createDisambiguationCardMock = jest.fn(() => ({ type: "disambiguation" }));
     global.UIBuilder = jest.fn(() => ({
       createUnsavedEventCard: jest.fn(() => ({ type: "unsaved" })),
+      createUnreadableEventCard: jest.fn(() => ({ type: "unreadable" })),
+      createAllDayEventCard: jest.fn(() => ({ type: "all-day" })),
+      createPastEventCard: jest.fn(() => ({ type: "past" })),
       createSuccessCard: jest.fn(() => ({ type: "success" })),
+      createOnlineBufferDisabledCard: jest.fn(() => ({ type: "online-disabled" })),
       createDisambiguationCard: createDisambiguationCardMock,
       createOriginSelectionCard: jest.fn(() => ({ type: "origin-selection" })),
       createShadowInfoCard: jest.fn(() => ({ type: "shadow-info" })),
@@ -226,7 +230,7 @@ describe("handleCreateBuffer", () => {
     };
   });
 
-  test("forces online buffering for a manual single-event action", () => {
+  test("passes conference data without overriding disabled online-buffer settings", () => {
     const { handleCreateBuffer } = require("../controller.js");
 
     handleCreateBuffer({
@@ -252,7 +256,7 @@ describe("handleCreateBuffer", () => {
       "AUTO",
       "calendar-1",
       expect.objectContaining({
-        forceOnlineBuffer: true,
+        forceOnlineBuffer: false,
         eventConferenceData: expect.any(String),
         eventHangoutLink: "https://meet.google.com/action-link"
       })
@@ -431,6 +435,45 @@ describe("handleCreateBuffer", () => {
     );
   });
 
+  test("shows a rejection card when an online choice is skipped by settings", () => {
+    processEventBufferMock = jest.fn(() => ({
+      skipped: true,
+      minutes: 0,
+      wasUpdate: false
+    }));
+    global.CalendarManager = jest.fn(() => ({
+      getEventRobust: jest.fn(() => ({
+        getId: jest.fn(() => "event-1"),
+        getStartTime: jest.fn(() => new Date("2099-03-18T10:00:00Z")),
+        getEndTime: jest.fn(() => new Date("2099-03-18T11:00:00Z")),
+        isAllDayEvent: jest.fn(() => false)
+      })),
+      processEventBuffer: processEventBufferMock
+    }));
+
+    const { handleCreateBuffer } = require("../controller.js");
+    handleCreateBuffer({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1",
+        attendanceMode: "online",
+        resolvedLocation: "https://meet.google.com/hybrid-link"
+      },
+      calendar: {}
+    });
+
+    expect(processEventBufferMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      "AUTO",
+      "calendar-1",
+      expect.objectContaining({
+        attendanceMode: "online",
+        forceOnlineBuffer: false
+      })
+    );
+    expect(global.CardService.newNavigation().updateCard).toHaveBeenCalledWith({ type: "online-disabled" });
+  });
+
   test("asks for an origin when only a manual physical location is provided", () => {
     const { onContinueBufferSetup } = require("../controller.js");
 
@@ -482,6 +525,105 @@ describe("handleCreateBuffer", () => {
         resolvedManualLocation: "Room 101",
         customOriginLocation: "Library"
       })
+    );
+  });
+
+  test("requires a custom origin location when custom origin is selected", () => {
+    const { handleOriginSelection } = require("../controller.js");
+
+    handleOriginSelection({
+      parameters: {
+        calendarId: "calendar-1",
+        eventId: "event-1",
+        attendanceMode: "physical",
+        resolvedLocation: "Room 101",
+        originMode: "CUSTOM"
+      },
+      formInput: {},
+      calendar: {}
+    });
+
+    expect(processEventBufferMock).not.toHaveBeenCalled();
+    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith(
+      "Add a starting location, or choose Home or Last Event Location."
+    );
+  });
+
+  test("delete-buffer actions cover unreadable, all-day, past, shadow, missing, and failed deletes", () => {
+    const allDayEvent = {
+      getId: jest.fn(() => "all-day"),
+      getStartTime: jest.fn(() => new Date("2099-03-18T10:00:00Z")),
+      getEndTime: jest.fn(() => new Date("2099-03-18T11:00:00Z")),
+      isAllDayEvent: jest.fn(() => true)
+    };
+    const pastEvent = {
+      getId: jest.fn(() => "past"),
+      getStartTime: jest.fn(() => new Date("2000-03-18T10:00:00Z")),
+      getEndTime: jest.fn(() => new Date("2000-03-18T11:00:00Z")),
+      isAllDayEvent: jest.fn(() => false)
+    };
+    const futureEvent = {
+      getId: jest.fn(() => "future"),
+      getStartTime: jest.fn(() => new Date("2099-03-18T10:00:00Z")),
+      getEndTime: jest.fn(() => new Date("2099-03-18T11:00:00Z")),
+      isAllDayEvent: jest.fn(() => false)
+    };
+    const failedShadow = {
+      deleteEvent: jest.fn(() => {
+        throw new Error("delete failed");
+      })
+    };
+    const getEventRobust = jest
+      .fn()
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(allDayEvent)
+      .mockReturnValueOnce(pastEvent)
+      .mockReturnValueOnce(futureEvent)
+      .mockReturnValueOnce(futureEvent)
+      .mockReturnValueOnce(futureEvent);
+    const getParentIdFromShadow = jest
+      .fn()
+      .mockReturnValueOnce("parent-1")
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(null);
+    const findLinkedShadowEvent = jest
+      .fn()
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(failedShadow);
+
+    global.CalendarManager = jest.fn(() => ({
+      getEventRobust,
+      getParentIdFromShadow,
+      findLinkedShadowEvent,
+      processEventBuffer: processEventBufferMock
+    }));
+    global.CalendarApp.getAllCalendars = jest.fn(() => []);
+
+    const { handleDeleteBuffer } = require("../controller.js");
+    const eventPayload = {
+      parameters: { calendarId: "calendar-1", eventId: "event-1" },
+      calendar: {}
+    };
+
+    handleDeleteBuffer(eventPayload);
+    expect(global.CardService.newNavigation().updateCard).toHaveBeenCalledWith({ type: "unreadable" });
+
+    handleDeleteBuffer(eventPayload);
+    expect(global.CardService.newNavigation().updateCard).toHaveBeenCalledWith({ type: "all-day" });
+
+    handleDeleteBuffer(eventPayload);
+    expect(global.CardService.newNavigation().updateCard).toHaveBeenCalledWith({ type: "past" });
+
+    handleDeleteBuffer(eventPayload);
+    expect(global.UIBuilder.mock.results[3].value.createShadowInfoCard).toHaveBeenCalledWith(futureEvent);
+
+    handleDeleteBuffer(eventPayload);
+    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith("No active Headstart buffer found.");
+
+    handleDeleteBuffer(eventPayload);
+    expect(failedShadow.deleteEvent).toHaveBeenCalled();
+    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith(
+      "Headstart couldn't delete the existing buffer."
     );
   });
 
@@ -591,7 +733,8 @@ describe("handleCreateBuffer", () => {
       createUnreadableEventCard: jest.fn(() => ({ type: "unreadable" })),
       createAllDayEventCard: jest.fn(() => ({ type: "all-day" })),
       createPastEventCard: jest.fn(() => ({ type: "past" })),
-      createSuccessCard: jest.fn(() => ({ type: "success" }))
+      createSuccessCard: jest.fn(() => ({ type: "success" })),
+      createOnlineBufferDisabledCard: jest.fn(() => ({ type: "online-disabled" }))
     }));
 
     const { handleCreateBuffer } = require("../controller.js");
@@ -612,7 +755,8 @@ describe("handleCreateBuffer", () => {
       parameters: { calendarId: "calendar-1", eventId: "future" },
       calendar: {}
     });
-    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith("Buffer skipped (Online disabled in Settings).");
+    expect(global.CardService.newNavigation().updateCard).toHaveBeenCalledWith({ type: "online-disabled" });
+    expect(global.CardService.newNotification().setText).toHaveBeenCalledWith("Online buffering is turned off in Settings.");
 
     handleCreateBuffer({
       parameters: { calendarId: "calendar-1", eventId: "future" },

@@ -26,4 +26,24 @@ describe("UIBuilder action parameters", () => {
       hasActiveBuffer: "true"
     }));
   });
+
+  test("physical create, refresh, and replacement actions route through origin selection", () => {
+    const ui = new UIBuilder({});
+
+    expect(ui._getCreateOrRefreshAction({
+      requiresOriginSelection: true
+    })).toBe("onShowOriginSelection");
+    expect(ui._getCreateOrRefreshAction({
+      requiresModeSelection: true,
+      requiresOriginSelection: true
+    })).toBe("onShowBufferModeSelection");
+    expect(ui._getCreateOrRefreshAction({})).toBe("handleCreateBuffer");
+
+    expect(ui._getDisambiguationAction("physical", false)).toBe("onShowOriginSelection");
+    expect(ui._getDisambiguationAction("online", false)).toBe("handleCreateBuffer");
+    expect(ui._getDisambiguationAction("physical", true)).toBe("onConfirmBufferReplacement");
+
+    expect(ui._getReplacementAction({ attendanceMode: "physical" })).toBe("onShowOriginSelection");
+    expect(ui._getReplacementAction({ attendanceMode: "online" })).toBe("handleCreateBuffer");
+  });
 });

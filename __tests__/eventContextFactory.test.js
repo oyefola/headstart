@@ -184,6 +184,47 @@ describe("EventContextFactory", () => {
     expect(factory.extractMeetingLink("https://meet.google.com/from-location", "")).toBe("https://meet.google.com/from-location");
   });
 
+  test("uses the meeting link itself as a fingerprint when the conference service has no hasher", () => {
+    const factory = new EventContextFactory({
+      getForEvent: jest.fn(() => ({
+        meetingLink: "",
+        detailsHtml: "",
+        nativeConferenceData: null,
+        hasNativeConferenceData: false,
+        conferenceFingerprint: ""
+      }))
+    });
+
+    const event = {
+      getLocation: jest.fn(() => ""),
+      getDescription: jest.fn(() => "Join https://meet.google.com/plain-fingerprint")
+    };
+
+    const context = factory.createFromEvent(event, "calendar-id");
+
+    expect(context.conferenceFingerprint).toBe("https://meet.google.com/plain-fingerprint");
+  });
+
+  test("treats an event with no location or meeting link as physical setup needed", () => {
+    const factory = new EventContextFactory({
+      getForEvent: jest.fn(() => ({
+        meetingLink: "",
+        detailsHtml: "",
+        nativeConferenceData: null,
+        hasNativeConferenceData: false,
+        conferenceFingerprint: ""
+      }))
+    });
+
+    const context = factory.createFromEvent({
+      getLocation: jest.fn(() => ""),
+      getDescription: jest.fn(() => "")
+    }, "calendar-id");
+
+    expect(context.isOnline).toBe(false);
+    expect(context.finalLocation).toBe("");
+  });
+
   test("treats plain keyword text in the location field as a physical location under the current rules", () => {
     const factory = new EventContextFactory({
       getForEvent: jest.fn(() => ({

@@ -739,6 +739,41 @@ describe("CalendarManager helper coverage", () => {
     expect(manager._getShadowReminderMinutes.call({ settings: { bufferReminderMinutes: null } })).toBe(0);
   });
 
+  test("_applyShadowReminderPolicy() tolerates reminder API failures", () => {
+    const manager = createManager();
+    const shadowEvent = {
+      removeAllReminders: jest.fn(),
+      addPopupReminder: jest.fn()
+    };
+
+    manager.settings.bufferReminderMinutes = "";
+    manager._findShadowEventResource = jest.fn(() => ({ id: "shadow-api-id" }));
+    global.Calendar.Events.patch.mockImplementationOnce(() => {
+      throw new Error("clear patch failed");
+    });
+    manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
+    expect(global.Calendar.Events.patch).toHaveBeenCalled();
+
+    jest.clearAllMocks();
+    manager.settings.bufferReminderMinutes = "0";
+    manager._findShadowEventResource = jest.fn(() => ({ id: "shadow-api-id" }));
+    global.Calendar.Events.get.mockReset();
+    global.Calendar.Events.get.mockImplementationOnce(() => {
+      throw new Error("read failed");
+    });
+    manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
+    expect(global.Calendar.Events.patch).toHaveBeenCalled();
+
+    jest.clearAllMocks();
+    manager.settings.bufferReminderMinutes = "1";
+    manager._findShadowEventResource = jest.fn(() => null);
+    shadowEvent.addPopupReminder.mockImplementationOnce(() => {
+      throw new Error("fallback popup failed");
+    });
+    manager._applyShadowReminderPolicy("calendar-1", shadowEvent);
+    expect(shadowEvent.addPopupReminder).toHaveBeenCalledWith(1);
+  });
+
   test("_findShadowEventResource() falls back to an event list lookup when the iCalUID lookup misses", () => {
     const manager = createManager();
     manager.conferenceDetailsService.findAdvancedEvent = jest.fn(() => null);
@@ -768,6 +803,23 @@ describe("CalendarManager helper coverage", () => {
         conferenceDataVersion: 1
       })
     );
+  });
+
+  test("_findShadowEventResource() returns null when the list fallback fails", () => {
+    const manager = createManager();
+    manager.conferenceDetailsService.findAdvancedEvent = jest.fn(() => null);
+    global.Calendar.Events.list.mockImplementationOnce(() => {
+      throw new Error("list failed");
+    });
+
+    const shadowResource = manager._findShadowEventResource("calendar-1", {
+      getId: jest.fn(() => "shadow-ical@example.com"),
+      getTitle: jest.fn(() => "Planning"),
+      getStartTime: jest.fn(() => new Date("2026-03-18T09:45:00.000Z")),
+      getEndTime: jest.fn(() => new Date("2026-03-18T11:00:00.000Z"))
+    });
+
+    expect(shadowResource).toBeNull();
   });
 
   test("linkShadowEvent(), getParentIdFromShadow(), and findLinkedShadowEvent() preserve sidecar metadata", () => {
@@ -841,6 +893,35 @@ describe("CalendarManager helper coverage", () => {
     expect(manager.findLinkedShadowEvent(originalEvent)).toBe(keptShadow);
     expect(duplicateShadow.deleteEvent).toHaveBeenCalled();
     expect(keptShadow.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  test("findLinkedShadowEvent() can match by universal id and continues when duplicate deletion fails", () => {
+    const originalEvent = {
+      getId: jest.fn(() => "parent-1"),
+      getTitle: jest.fn(() => "Planning"),
+      getStartTime: jest.fn(() => new Date("2026-03-18T10:00:00.000Z")),
+      getEndTime: jest.fn(() => new Date("2026-03-18T11:00:00.000Z"))
+    };
+    const manager = createManager();
+    const universalId = manager.getUniversalEventId(originalEvent);
+    const keptShadow = {
+      getTag: jest.fn((key) => key === "HEADSTART_UNIVERSAL_ID" ? universalId : null),
+      getStartTime: jest.fn(() => new Date("2026-03-18T09:30:00.000Z")),
+      deleteEvent: jest.fn()
+    };
+    const duplicateShadow = {
+      getTag: jest.fn((key) => key === "HEADSTART_UNIVERSAL_ID" ? universalId : null),
+      getStartTime: jest.fn(() => new Date("2026-03-18T09:45:00.000Z")),
+      deleteEvent: jest.fn(() => {
+        throw new Error("delete failed");
+      })
+    };
+    manager.getOrCreateHeadstartCalendar = jest.fn(() => ({
+      getEvents: jest.fn(() => [duplicateShadow, keptShadow])
+    }));
+
+    expect(manager.findLinkedShadowEvent(originalEvent)).toBe(keptShadow);
+    expect(duplicateShadow.deleteEvent).toHaveBeenCalled();
   });
 
   test("processEventBuffer() deletes skipped shadows, updates existing ones, and surfaces save verification failures", () => {

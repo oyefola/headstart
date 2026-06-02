@@ -48,7 +48,7 @@ class TravelEngine {
     }
   }
 
-  calculateDynamicBuffer(destination, eventStartTime, calendarId, originMode) {
+  calculateDynamicBuffer(destination, eventStartTime, calendarId, originMode, customOriginLocation) {
     if (!this.settings.homeAddress) {
         return { minutes: 15, log: "Error: No Home Address Set", originUsed: "None" };
     }
@@ -57,7 +57,11 @@ class TravelEngine {
     let isHome = true;
     let originLog = "Home";
 
-    if (originMode === "HOME") { 
+    if (originMode === "CUSTOM" && customOriginLocation) {
+      originAddress = customOriginLocation;
+      isHome = false;
+      originLog = "Custom";
+    } else if (originMode === "HOME") { 
       originAddress = this.settings.homeAddress; 
     } else if (originMode === "PREVIOUS") {
       const prev = this.findPreviousEventLocation(eventStartTime, calendarId);
@@ -174,7 +178,7 @@ class TravelEngine {
   }
 }
 
-// Support local Jest testing
+ 
 if (typeof module !== 'undefined') {
   module.exports = { TravelEngine };
 }

@@ -85,7 +85,6 @@ class ShadowDescriptionBuilder {
   }
 }
 
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = { ShadowDescriptionBuilder };
 }

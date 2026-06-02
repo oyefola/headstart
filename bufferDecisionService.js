@@ -51,7 +51,6 @@ class BufferDecisionService {
   }
 }
 
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = { BufferDecisionService };
 }

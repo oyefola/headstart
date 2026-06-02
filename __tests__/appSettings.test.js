@@ -7,18 +7,24 @@ describe("AppSettings Class", () => {
     let settingsManager;
 
     beforeEach(() => {
-        // Clear mock history before each test
         jest.clearAllMocks();
         settingsManager = new AppSettings();
     });
 
     test("get() should retrieve properties with correct fallbacks", () => {
+        global.PropertiesService.getUserProperties().getProperties.mockImplementationOnce(() => ({
+            HOME_ADDRESS: "123 Random Street, Sheffield",
+            WALK_LIMIT: "2.5",
+            BUFFER_REMINDER_MINUTES: "10",
+        }));
+
         const settings = settingsManager.get();
 
         expect(settings.homeAddress).toBe("123 Random Street, Sheffield");
 
-        // Test that it correctly applies fallbacks for missing data
+        // checking that it correctly applies fallbacks for missing data
         expect(settings.extraBuffer).toBe("0");
+        expect(settings.bufferReminderMinutes).toBe("10");
         expect(settings.transportMode).toBe("DRIVING");
     });
 
@@ -48,7 +54,6 @@ describe("AppSettings Class", () => {
 
         settingsManager.save(mockInput);
 
-        // Verify setProperties was called
         const setPropsMock = global.PropertiesService.getUserProperties().setProperties;
         expect(setPropsMock).toHaveBeenCalled();
 
@@ -68,6 +73,16 @@ describe("AppSettings Class", () => {
 
         const savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
         expect(savedData["ONLINE_BUFFER"]).toBe("15");
+    });
+
+    test("save() should preserve a supplied online buffer input", () => {
+        settingsManager.save({
+            setting_buffer_online: "true",
+            setting_online_buffer: "20",
+        });
+
+        const savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
+        expect(savedData["ONLINE_BUFFER"]).toBe("20");
     });
 
     test("save() should sanitize buffered reminder minutes and allow blank values", () => {
@@ -97,6 +112,14 @@ describe("AppSettings Class", () => {
         jest.clearAllMocks();
         settingsManager.save({
             setting_buffer_reminder_minutes: "-12"
+        });
+
+        savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];
+        expect(savedData["BUFFER_REMINDER_MINUTES"]).toBe("0");
+
+        jest.clearAllMocks();
+        settingsManager.save({
+            setting_buffer_reminder_minutes: "not-a-number"
         });
 
         savedData = global.PropertiesService.getUserProperties().setProperties.mock.calls[0][0];

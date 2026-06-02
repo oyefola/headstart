@@ -1,7 +1,6 @@
 /**
  * Handles all Calendar API interactions and state linking.
  */
-/* istanbul ignore next */
 function createEventContextFactory() {
   if (typeof EventContextFactory !== 'undefined') {
     return new EventContextFactory();
@@ -12,7 +11,6 @@ function createEventContextFactory() {
   throw new Error("EventContextFactory is unavailable.");
 }
 
-/* istanbul ignore next */
 function createConferenceDetailsService() {
   if (typeof ConferenceDetailsService !== "undefined") {
     return new ConferenceDetailsService();
@@ -23,7 +21,6 @@ function createConferenceDetailsService() {
   throw new Error("ConferenceDetailsService is unavailable.");
 }
 
-/* istanbul ignore next */
 function createShadowDescriptionBuilder() {
   if (typeof ShadowDescriptionBuilder !== 'undefined') {
     return new ShadowDescriptionBuilder();
@@ -34,7 +31,6 @@ function createShadowDescriptionBuilder() {
   throw new Error("ShadowDescriptionBuilder is unavailable.");
 }
 
-/* istanbul ignore next */
 function createBufferDecisionService(settings, travelEngine) {
   if (typeof BufferDecisionService !== 'undefined') {
     return new BufferDecisionService(settings, travelEngine);

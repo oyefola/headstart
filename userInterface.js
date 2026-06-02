@@ -64,9 +64,30 @@ class UIBuilder {
       eventConferenceData: context.eventConferenceData || "",
       eventHangoutLink: context.eventHangoutLink || "",
       attendanceMode: context.attendanceMode || "",
+      resolvedLocation: context.resolvedLocation || "",
+      originMode: context.originMode || "",
+      customOriginLocation: context.customOriginLocation || "",
       hasActiveBuffer: context.hasActiveBuffer || "",
       ...extra
     };
+  }
+
+  _getCreateOrRefreshAction(cardOptions) {
+    const options = cardOptions || {};
+    if (options.requiresModeSelection) return "onShowBufferModeSelection";
+    if (options.requiresOriginSelection) return "onShowOriginSelection";
+    return "handleCreateBuffer";
+  }
+
+  _getDisambiguationAction(attendanceMode, hasActiveBuffer) {
+    if (hasActiveBuffer) return "onConfirmBufferReplacement";
+    return attendanceMode === "physical" ? "onShowOriginSelection" : "handleCreateBuffer";
+  }
+
+  _getReplacementAction(actionContext) {
+    return actionContext && actionContext.attendanceMode === "physical"
+      ? "onShowOriginSelection"
+      : "handleCreateBuffer";
   }
 
   createDashboardCard(appSettings) {
@@ -142,19 +163,25 @@ class UIBuilder {
     
     if (existingShadow) {
       section.addWidget(this._createLabel("✅ Buffer Active", "A buffered event has already been created for this event."));
-      section.addWidget(this._createActionButton("Refresh Buffer", cardOptions.requiresModeSelection ? "onShowBufferModeSelection" : "handleCreateBuffer", {
+      section.addWidget(this._createActionButton("Refresh Buffer", this._getCreateOrRefreshAction(cardOptions), {
         parameters: this._buildBufferParameters(calId, evId, actionContext, cardOptions.requiresModeSelection ? {
           physicalLocation: cardOptions.physicalLocation || "",
           meetingLink: cardOptions.meetingLink || "",
           hasActiveBuffer: "true"
-        } : {}),
+        } : {
+          attendanceMode: cardOptions.requiresOriginSelection ? "physical" : (actionContext.attendanceMode || ""),
+          resolvedLocation: cardOptions.requiresOriginSelection ? (cardOptions.physicalLocation || "") : (actionContext.resolvedLocation || "")
+        }),
         style: CardService.TextButtonStyle.FILLED,
         backgroundColor: CONFIG.GOOGLE_BLUE
       }));
     } else {
       section.addWidget(this._createLabel("Create Buffer", "The buffer can now be calculated using your current settings."));
-      section.addWidget(this._createActionButton("Create Buffer", "handleCreateBuffer", {
-        parameters: this._buildBufferParameters(calId, evId, actionContext),
+      section.addWidget(this._createActionButton("Create Buffer", this._getCreateOrRefreshAction(cardOptions), {
+        parameters: this._buildBufferParameters(calId, evId, actionContext, {
+          attendanceMode: cardOptions.requiresOriginSelection ? "physical" : (actionContext.attendanceMode || ""),
+          resolvedLocation: cardOptions.requiresOriginSelection ? (cardOptions.physicalLocation || "") : (actionContext.resolvedLocation || "")
+        }),
         style: CardService.TextButtonStyle.FILLED,
         backgroundColor: CONFIG.GOOGLE_BLUE
       }));
@@ -166,7 +193,6 @@ class UIBuilder {
 
   createDisambiguationCard(calId, evId, physicalLoc, meetingLink, actionContext) {
     const hasActiveBuffer = actionContext && actionContext.hasActiveBuffer === "true";
-    const activeBufferAction = hasActiveBuffer ? "onConfirmBufferReplacement" : "handleCreateBuffer";
     const builder = CardService.newCardBuilder();
     const section = CardService.newCardSection();
     
@@ -174,7 +200,7 @@ class UIBuilder {
 
     builder.addSection(section);
     builder.setFixedFooter(this._createFixedFooter(
-      this._createActionButton("In Person", activeBufferAction, {
+      this._createActionButton("In Person", this._getDisambiguationAction("physical", hasActiveBuffer), {
         parameters: this._buildBufferParameters(calId, evId, actionContext, {
           attendanceMode: 'physical',
           resolvedLocation: physicalLoc
@@ -182,7 +208,7 @@ class UIBuilder {
         style: CardService.TextButtonStyle.FILLED,
         backgroundColor: CONFIG.GOOGLE_BLUE
       }),
-      this._createActionButton("💻 Online", activeBufferAction, {
+      this._createActionButton("💻 Online", this._getDisambiguationAction("online", hasActiveBuffer), {
         parameters: this._buildBufferParameters(calId, evId, actionContext, {
           attendanceMode: 'online',
           resolvedLocation: meetingLink
@@ -205,7 +231,7 @@ class UIBuilder {
 
     builder.addSection(section);
     builder.setFixedFooter(this._createFixedFooter(
-      this._createActionButton("Replace Existing Buffer", "handleCreateBuffer", {
+      this._createActionButton("Replace Existing Buffer", this._getReplacementAction(actionContext), {
         parameters: this._buildBufferParameters(calId, evId, actionContext, {
           attendanceMode: actionContext && actionContext.attendanceMode || "",
           resolvedLocation: resolvedLocation
@@ -221,6 +247,41 @@ class UIBuilder {
         style: CardService.TextButtonStyle.OUTLINED
       })
     ));
+    return builder.build();
+  }
+
+  createOriginSelectionCard(calId, evId, actionContext) {
+    const builder = CardService.newCardBuilder();
+    const section = CardService.newCardSection();
+
+    section.addWidget(this._createLabel(
+      "Where are you leaving from?",
+      "Choose the starting point Headstart should use for this physical buffer."
+    ));
+
+    const buttonSet = CardService.newButtonSet()
+      .addButton(this._createActionButton("Home", "handleOriginSelection", {
+        parameters: this._buildBufferParameters(calId, evId, actionContext, {
+          originMode: "HOME"
+        })
+      }))
+      .addButton(this._createActionButton("Last Event Location", "handleOriginSelection", {
+        parameters: this._buildBufferParameters(calId, evId, actionContext, {
+          originMode: "PREVIOUS"
+        })
+      }));
+    section.addWidget(buttonSet);
+
+    section.addWidget(this._createLabel("New Origin Location", "Use this if you are leaving from somewhere else."));
+    section.addWidget(CardService.newTextInput().setFieldName("customOriginLocation"));
+    section.addWidget(CardService.newButtonSet()
+      .addButton(this._createActionButton("Use New Origin Location", "handleOriginSelection", {
+        parameters: this._buildBufferParameters(calId, evId, actionContext, {
+          originMode: "CUSTOM"
+        })
+      })));
+
+    builder.addSection(section);
     return builder.build();
   }
 
@@ -269,6 +330,23 @@ class UIBuilder {
     
     section.addWidget(CardService.newTextParagraph().setText("<i><b>Note:</b> Buffered event reminders follow your Headstart settings. If the original event still has alerts, you may want to mute it to avoid double notifications.</i>"));
     
+    builder.addSection(section);
+    return builder.build();
+  }
+
+  createOnlineBufferDisabledCard() {
+    const builder = CardService.newCardBuilder();
+    builder.setDisplayStyle(CardService.DisplayStyle.REPLACE);
+    const section = CardService.newCardSection();
+
+    section.addWidget(this._createLabel(
+      "Online Buffer Disabled",
+      "This event is online, but Headstart is currently set not to create buffers for online meetings."
+    ));
+    section.addWidget(CardService.newTextParagraph().setText(
+      "<i>Turn on online meeting buffers in Settings, or choose an in-person option for hybrid events.</i>"
+    ));
+
     builder.addSection(section);
     return builder.build();
   }
@@ -468,7 +546,6 @@ class UIBuilder {
   }
 }
 
-/* istanbul ignore next */
 if (typeof module !== 'undefined') {
   module.exports = { UIBuilder };
 }
